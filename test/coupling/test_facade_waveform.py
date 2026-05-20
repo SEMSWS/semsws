@@ -88,13 +88,11 @@ def workspace(tmp_path_factory, gmsh_available, request) -> tuple[Path, Path, Pa
         simulation:
           dimension: 3
           order: 4
-          time:
-            dt: {DT}
-            steps: {NT}
-            cfl_factor: 0.3
-          output:
-            directory: "./out"
-            log_interval: 1000
+          dt: {DT}
+          steps: {NT}
+          cfl_factor: 0.3
+          directory: "./out"
+          log_interval: 1000
         mesh:
           type: external
           file: {mesh_file.name}
@@ -117,14 +115,11 @@ def workspace(tmp_path_factory, gmsh_available, request) -> tuple[Path, Path, Pa
             rho: {RHO_SOLID}
         boundary:
           absorbing:
-            type: cerjan
             sides: []
             thickness: 0.0
             alpha: 0.0
-          dirichlet:
-            attributes: []
+          dirichlet: []
         sources:
-          mode: simultaneous
           list:
             - id: 1
               name: "fluid-pressure"
@@ -138,7 +133,7 @@ def workspace(tmp_path_factory, gmsh_available, request) -> tuple[Path, Path, Pa
         receivers:
           output:
             formats:
-              - type: ascii
+              - ascii
             filename: "rcv"
           type: [PS]
           list:

@@ -1,141 +1,127 @@
-
-name: "3D Elastic 2-Layer Benchmark (Cubit mesh, refined)"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
-
+name: 3D Elastic 2-Layer Benchmark (Cubit mesh, refined)
 simulation:
   dimension: 3
-  order: 4            # NGLL = 5
-
-  time:
-    dt: 0.0005
-    steps: 12000
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 1000
-
-    # ----- Wavefield output -----
-    wavefield:
-      enabled: true
-      interval: 500
-      fields: ["DISP"]
-      formats:
-        - type: "glvis"
-        - type: "paraview"
-          refinement: 1
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [200, 200]
-          components: [-1, 0, 1, 2]    # mag, x, y, z
-          cross_sections:
-            yz: [5000.0]               # through source x=5000
-            xz: [5000.0]               # through source y=5000
-            xy: [-3000.0]              # at source depth z=-3000
-
-    # ----- Material output (GMT cross-sections) -----
-    material:
-      enabled: true
-      fields: ["vp", "vs", "rho"]
-      formats:
-        - type: "gmt"
-          resolution: [200, 200]
-          cross_sections:
-            yz: [5000.0]
-            xz: [5000.0]
-            xy: [-3000.0]
-
-# =============================================================================
-# Mesh Configuration (partitioned mesh from refine_mesh)
-# =============================================================================
-
+  order: 4
+  dt: 0.0005
+  steps: 12000
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 1000
+  summary_file: summary.txt
 mesh:
-  type: partitioned
-  partitioned:
-    directory: "mesh"
+  type: prepart_mfem
+  prepart_mfem:
+    directory: mesh
     nparts: 64
   max_freq: 5.6
   ppw: 5
-
-# =============================================================================
-# Material Model (2 layers by attribute)
-# =============================================================================
-
 material:
   type: isotropic_elastic
   format: by_attribute
   file: materials_elastic.txt
-
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
 boundary:
   absorbing:
-    type: cerjan
-    sides: [] #[bottom, left, right, front, back]
-    thickness: 1500.
+    sides: []
+    thickness: 1500.0
     alpha: 0.6
-
-# =============================================================================
-# Sources
-# =============================================================================
-
 sources:
-  mode: simultaneous
-
   list:
-    - id: 1
-      name: "Source 1"
-      type: "moment_tensor"
-      location: [5000.0, 5000.0, -3000.0]  # 3km depth from surface (z=0)
-      moment_tensor:
-        Mxx: 0.2048
-        Myy: -0.6687
-        Mzz: 0.4639
-        Mxy: 0.6350
-        Mxz: -0.3415
-        Myz: -1.586
-
-      wavelet:
-        type: ricker
-        frequency: 2.0
-        delay: 1.0
-        amplitude: 1.0e10
-
-# =============================================================================
-# Receivers (near surface z=0)
-# =============================================================================
-
+  - type: moment_tensor
+    location:
+    - 5000.0
+    - 5000.0
+    - -3000.0
+    moment_tensor:
+      Mxx: 0.2048
+      Myy: -0.6687
+      Mzz: 0.4639
+      Mxy: 0.635
+      Mxz: -0.3415
+      Myz: -1.586
+    wavelet:
+      type: ricker
+      frequency: 2.0
+      delay: 1.0
+      amplitude: 1.0e10
 receivers:
   output:
     formats:
-      - type: ascii
-
-  type: [DISP, VEL]
-
+    - ascii
+  type:
+  - DISP
+  - VEL
   list:
-    - name: "R01"
-      location: [5000.0, 6000.0, 0.0]
-    - name: "R02"
-      location: [5000.0, 7000.0, 0.0]
-    - name: "R03"
-      location: [5000.0, 8000.0, 0.0]
-    - name: "R04"
-      location: [6000.0, 5000.0, 0.0]
-    - name: "R05"
-      location: [7000.0, 5000.0, 0.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
-
+  - name: R01
+    location:
+    - 5000.0
+    - 6000.0
+    - 0.0
+  - name: R02
+    location:
+    - 5000.0
+    - 7000.0
+    - 0.0
+  - name: R03
+    location:
+    - 5000.0
+    - 8000.0
+    - 0.0
+  - name: R04
+    location:
+    - 6000.0
+    - 5000.0
+    - 0.0
+  - name: R05
+    location:
+    - 7000.0
+    - 5000.0
+    - 0.0
 device:
   type: cpu
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    components:
+    - -1
+    - 0
+    - 1
+    - 2
+    enabled: true
+    interval: 500
+    fields:
+    - DISP
+    formats:
+    - glvis
+    - type: paraview
+      refinement: 1
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 200
+      - 200
+      cross_sections:
+        yz:
+        - 5000.0
+        xz:
+        - 5000.0
+        xy:
+        - -3000.0
+  material:
+    enabled: true
+    fields:
+    - vp
+    - vs
+    - rho
+    formats:
+    - type: gmt
+      resolution:
+      - 200
+      - 200
+      cross_sections:
+        yz:
+        - 5000.0
+        xz:
+        - 5000.0
+        xy:
+        - -3000.0

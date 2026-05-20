@@ -76,13 +76,11 @@ def _write_yaml(yaml_path: Path, mesh_name: str,
         simulation:
           dimension: 3
           order: 4
-          time:
-            dt: {DT}
-            steps: {NT}
-            cfl_factor: 0.3
-          output:
-            directory: "./out"
-            log_interval: 10000
+          dt: {DT}
+          steps: {NT}
+          cfl_factor: 0.3
+          directory: "./out"
+          log_interval: 10000
         mesh:
           type: external
           file: {mesh_name}
@@ -105,22 +103,19 @@ def _write_yaml(yaml_path: Path, mesh_name: str,
             rho: {SOLID_RHO}
         boundary:
           absorbing:
-            type: cerjan
             sides: []
             thickness: 0.0
             alpha: 0.0
-          dirichlet:
-            # All outer-surface attrs the probe mesh defines: 11=bottom,
-            # 12=top, 13=sides. The fluid side only touches 11 and 13;
-            # the coupled facade must silently drop 12 (solid-only) and
-            # must NOT promote the auto-generated interface attr to
-            # Dirichlet. If either of those safeguards fails, the two
-            # runs' fluid traces will still match (no actual coupling)
-            # but the setup will abort — so this YAML implicitly tests
-            # the Dirichlet-attr filter on the fluid side.
-            attributes: [11, 12, 13]
+          # All outer-surface attrs the probe mesh defines: 11=bottom,
+          # 12=top, 13=sides. The fluid side only touches 11 and 13;
+          # the coupled facade must silently drop 12 (solid-only) and
+          # must NOT promote the auto-generated interface attr to
+          # Dirichlet. If either of those safeguards fails, the two
+          # runs' fluid traces will still match (no actual coupling)
+          # but the setup will abort — so this YAML implicitly tests
+          # the Dirichlet-attr filter on the fluid side.
+          dirichlet: [11, 12, 13]
         sources:
-          mode: simultaneous
           list:
             - id: 1
               name: "fluid-pressure"
@@ -134,7 +129,7 @@ def _write_yaml(yaml_path: Path, mesh_name: str,
         receivers:
           output:
             formats:
-              - type: ascii
+              - ascii
             filename: "rcv"
           type: [PS]
           list:

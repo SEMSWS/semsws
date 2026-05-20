@@ -648,7 +648,8 @@ void ReceiverArray::SaveFilteredLog(const std::string& filepath) const {
     }
 
     file << "# Filtered Receivers Log\n";
-    file << "# Receivers excluded due to domain type incompatibility\n";
+    file << "# Receivers excluded by domain type mismatch or because their\n";
+    file << "# position lies outside the mesh / submesh.\n";
     file << "# Format: name, type, reason\n";
     file << "#\n";
     file << "# Total filtered: " << filtered_log_.size() << "\n";

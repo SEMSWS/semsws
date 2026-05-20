@@ -111,12 +111,7 @@ int RunSimulation(std::unique_ptr<YamlConfig> config) {
         auto wf_config = sim.Config().GetWavefieldOutputConfig();
         if (!wf_config.formats.empty()) {
             sim.SetWavefieldWriters(
-                CreateWavefieldWriters(wf_config, sim.OutputDir()));
-        } else {
-            // Backward compatibility: single format string
-            sim.SetWavefieldWriter(
-                std::make_unique<GLVisWavefieldWriter>(
-                    sim.OutputDir(), sim.WavefieldInterval()));
+                CreateWavefieldWriters(wf_config, sim.Config().GetVisDirectory()));
         }
     }
 
@@ -124,21 +119,17 @@ int RunSimulation(std::unique_ptr<YamlConfig> config) {
     auto mat_config = sim.Config().GetMaterialOutputConfig();
     if (mat_config.enabled) {
         MaterialWriter::Write(sim.Material(), sim.FESpace(),
-                              mat_config, sim.OutputDir(), MPI_COMM_WORLD);
+                              mat_config, sim.Config().GetVisDirectory(),
+                              MPI_COMM_WORLD);
     }
 
 
 
     double t_end_setup = MPI_Wtime();
 
-    // Run simulation (receivers are saved internally by Run/RunSequential)
+    // Run simulation (receivers are saved internally by Run)
     double t_start = MPI_Wtime();
-    std::string source_mode = sim.SourceMode();
-    if (source_mode == "sequential") {
-        sim.RunSequential();
-    } else {
-        sim.Run();
-    }
+    sim.Run();
     if (Device::Allows(Backend::DEVICE_MASK)) {
         MFEM_DEVICE_SYNC;  // Wait for GPU to complete before measuring time
     }
@@ -257,19 +248,19 @@ int RunCoupled(std::unique_ptr<YamlConfig> config) {
     // per-domain (or mute one side entirely with `enabled: false`).
     // Absent per-side blocks inherit the top-level defaults.
     {
-        const std::string outdir = sim.OutputDir();
+        const std::string vis_dir = sim.Config().GetVisDirectory();
         auto fluid_cfg = sim.Config().GetMaterialOutputConfig("fluid");
         auto solid_cfg = sim.Config().GetMaterialOutputConfig("solid");
         if (fluid_cfg.enabled) {
             MaterialWriter::Write(sim.FluidMaterial(),
                                   sim.FluidComponents().FESScalar(),
-                                  fluid_cfg, outdir + "/fluid",
+                                  fluid_cfg, vis_dir + "/fluid",
                                   MPI_COMM_WORLD);
         }
         if (solid_cfg.enabled) {
             MaterialWriter::Write(sim.SolidMaterial(),
                                   sim.SolidComponents().FESScalar(),
-                                  solid_cfg, outdir + "/solid",
+                                  solid_cfg, vis_dir + "/solid",
                                   MPI_COMM_WORLD);
         }
     }
@@ -287,20 +278,14 @@ int RunCoupled(std::unique_ptr<YamlConfig> config) {
     // `output.wavefield.solid:`; absent overrides inherit the
     // top-level values.
     if (sim.IsWavefieldOutputEnabled()) {
-        const std::string outdir = sim.OutputDir();
+        const std::string vis_dir = sim.Config().GetVisDirectory();
         auto fluid_cfg = sim.Config().GetWavefieldOutputConfig("fluid");
         auto solid_cfg = sim.Config().GetWavefieldOutputConfig("solid");
         auto build = [&](const WavefieldOutputConfig& cfg,
                          const std::string& side) {
             std::vector<std::unique_ptr<WavefieldWriter>> ws;
-            if (!cfg.enabled) return ws;
-            if (!cfg.formats.empty()) {
-                ws = CreateWavefieldWriters(cfg, outdir + "/" + side);
-            } else {
-                // Backward-compat: YAML without a `formats:` list →
-                // GLVis only.
-                ws.push_back(std::make_unique<GLVisWavefieldWriter>(
-                    outdir + "/" + side, cfg.interval));
+            if (cfg.enabled && !cfg.formats.empty()) {
+                ws = CreateWavefieldWriters(cfg, vis_dir + "/" + side);
             }
             return ws;
         };

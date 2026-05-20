@@ -9,7 +9,7 @@
 //   3. FetchOwnedData()    — each rank reads its owned slabs from HDF5 into
 //                            (nt, ncomp) matrices (ncomp parallel hyperslabs
 //                            per physical receiver)
-//   4. AlignToSimulation() — optional per-rank in-place resampling
+//   4. AlignToSimulation() — per-rank in-place auto-resample on grid mismatch
 
 #ifndef SEM_OBSERVED_DATA_HPP
 #define SEM_OBSERVED_DATA_HPP
@@ -64,12 +64,13 @@ public:
     /**
      * @brief Phase 1: load HDF5 catalog, broadcast metadata only.
      *
-     * Rank 0 reads `obs.file` with HDF5ObservedReader::ReadCatalog and
-     * expands the hierarchical result into the flat receivers_ list. The
+     * Rank 0 reads `path` (shot `shot_id`) with HDF5ObservedReader::ReadCatalog
+     * and expands the hierarchical result into the flat receivers_ list. The
      * catalog (names, positions, types, components, has_weight flags) is
      * broadcast to all ranks. Bulk data/weight buffers stay empty.
      */
-    void Load(const ObservedSourceDef& obs, int space_dim, MPI_Comm comm);
+    void Load(const std::string& path, int shot_id, int space_dim,
+              MPI_Comm comm);
 
     /**
      * @brief Phase 3: each rank reads only its owned slabs from HDF5.
@@ -81,14 +82,14 @@ public:
     void FetchOwnedData(const ReceiverArray& receivers, MPI_Comm comm);
 
     /**
-     * @brief Phase 4: optional per-rank in-place resampling onto simulation
-     *        grid (nt = sim_nt, dt = sim_dt, t0 = existing t0_).
+     * @brief Phase 4: per-rank align to simulation grid.
      *
-     * Strict mode (resample.enabled == false) only calls ValidateCompatibility
-     * and aborts on mismatch (legacy behavior).
+     * If observed dt/nt match the simulation grid (within 1e-12 on dt and
+     * exact on nt), this is a no-op. Otherwise the trace is auto-resampled
+     * onto (sim_nt, sim_dt) via Lanczos (a=8); rank 0 emits a single WARN
+     * line. Aborts if observed t-window does not cover simulation t-window.
      */
-    void AlignToSimulation(int sim_nt, real_t sim_dt,
-                           const ObservedResampleDef& resample);
+    void AlignToSimulation(int sim_nt, real_t sim_dt);
 
     int NumReceivers() const { return static_cast<int>(receivers_.size()); }
     int NumSamples() const { return num_samples_; }
@@ -109,6 +110,7 @@ private:
     real_t dt_ = 0.0;
     real_t t0_ = 0.0;
     int space_dim_ = 0;
+    int shot_id_ = 0;           // shot index (all ranks)
     std::string hdf5_path_;     // source HDF5 file path (all ranks)
     MPI_Comm comm_ = MPI_COMM_NULL;
 

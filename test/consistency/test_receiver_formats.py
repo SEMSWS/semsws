@@ -142,7 +142,7 @@ def read_ascii_traces(outdir: Path, source_id: str) -> dict[tuple[str, str, int]
 
 def read_hdf5_traces(outdir: Path, base_filename: str, source_id: str
                      ) -> tuple[dict[tuple[str, str, int], np.ndarray], np.dtype]:
-    """Read seis_<id>.h5 (v2.0 schema, /shots/0000/receivers/...) →
+    """Read seis_<id>.h5 (v2.0 schema, /shots/<source_id>/receivers/...) →
     ({(name, type, comp): data}, real_dtype)."""
     import h5py  # local import so missing dep → pytest.skip
     h5_path = outdir / f"{base_filename}{source_id}.h5"
@@ -160,11 +160,11 @@ def read_hdf5_traces(outdir: Path, base_filename: str, source_id: str
     out: dict[tuple[str, str, int], np.ndarray] = {}
     real_dtype: np.dtype | None = None
     with h5py.File(h5_path, "r") as f:
-        # v2.0: receivers live under /shots/0000/receivers/
+        # v2.0: receivers live under /shots/<source_id>/receivers/
         assert f.attrs["format_version"].decode() if isinstance(
             f.attrs["format_version"], bytes) else f.attrs["format_version"] \
             == "2.0", "expected format_version 2.0"
-        rgrp = f["shots"]["0000"]["receivers"]
+        rgrp = f["shots"][source_id]["receivers"]
         for recv_name in rgrp.keys():
             rg = rgrp[recv_name]
             for ch_name in rg.keys():
@@ -233,18 +233,18 @@ def mutate_config(src: Path, dst_config: Path, outdir: Path, device: str) -> Non
     # Canonical mapping-list form: [{type: ascii}, {type: hdf5}, {type: su}].
     cfg["receivers"]["output"].pop("format", None)
     cfg["receivers"]["output"]["formats"] = [
-        {"type": "ascii"},
-        {"type": "hdf5"},
-        {"type": "su"},
+        "ascii",
+        "hdf5",
+        "su",
     ]
     cfg["receivers"]["output"]["filename"] = "seis"
 
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
 
-    out_cfg = cfg["simulation"].setdefault("output", {})
-    out_cfg["directory"] = str(outdir)
-    if "wavefield" in out_cfg:
-        out_cfg["wavefield"]["enabled"] = False
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
 
     cfg.setdefault("device", {})["type"] = device
 
@@ -297,14 +297,10 @@ def test_receiver_format_consistency(
                              mpi_cmd, cwd=work)
     assert ok, f"{case_id}: simulation failed:\n{msg}"
 
-    # Filename suffix depends on mode: simultaneous uses input shot_id
-    # (default 0), sequential uses source.id (=1 in test configs).
+    # Filename suffix = shot_id (default 0).
     with open(config_path) as _f_cfg:
         _src_cfg = yaml.safe_load(_f_cfg).get("sources", {})
-    if _src_cfg.get("mode", "sequential") == "simultaneous":
-        source_id = f"{_src_cfg.get('shot_id', 0):04d}"
-    else:
-        source_id = "0001"  # MakeSourceIdString for config id=1
+    source_id = f"{_src_cfg.get('shot_id', 0):04d}"
     ascii_traces = read_ascii_traces(outdir, source_id)
     assert ascii_traces, f"{case_id}: no ASCII receiver files found in {outdir}"
 

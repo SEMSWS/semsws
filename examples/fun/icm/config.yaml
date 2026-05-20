@@ -1,62 +1,18 @@
-# =============================================================================
-# ICM Text Mesh - 2D Elastic Forward Simulation
-# =============================================================================
-# Source at "i-dot" position. Run forward, then reverse snapshots for
-# backward-in-time animation where waves converge to form "icm".
-
-name: "ICM Elastic 2D"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
+name: ICM Elastic 2D
 simulation:
   dimension: 2
   order: 8
-
-  time:
-    steps: 60000
-    dt: 0.00005
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 50
-
-    # ----- Wavefield snapshot output -----
-    wavefield:
-      enabled: true
-      interval: 100
-      fields: ["DISP"]
-      formats:
-        - type: "paraview"
-          refinement: 2
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [600, 300]
-          components: [-1, 0, 1]
-
-    # ----- Material output -----
-    material:
-      enabled: true
-      fields: ["vp", "vs", "rho"]
-      formats:
-        - type: "paraview"
-          refinement: 2
-          data_format: "binary32"
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
+  steps: 60000
+  dt: 5.0e-05
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 50
+  summary_file: summary.txt
 mesh:
   type: external
   file: icm.msh
-  max_freq: 24.
+  max_freq: 24.0
   ppw: 5
-
-# =============================================================================
-# Material Properties
-# =============================================================================
 material:
   type: isotropic_elastic
   format: constant
@@ -65,64 +21,79 @@ material:
   rho: 2500.0
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
 boundary:
   absorbing:
-    type: cerjan
-    sides: [] #[bottom, right, top, left]
+    sides: []
     thickness: 500.0
     alpha: 0.4
-
-  dirichlet:
-    attributes: []
-
-# =============================================================================
-# Sources
-# =============================================================================
+  dirichlet: []
 sources:
-  mode: sequential
-
+  shot_id: 1
   list:
-    - id: 1
-      name: "i-dot"
-      type: moment_tensor
-      location: [1293.0, 2107.0]
-      moment_tensor:
-        Mxx: 1.0
-        Myy: 1.0
-        Mxy: 0
-      wavelet:
-        type: ricker
-        frequency: 10.0
-        amplitude: 1.0e10
-        delay: 0.12
-
-# =============================================================================
-# Receivers
-# =============================================================================
+  - type: moment_tensor
+    location:
+    - 1293.0
+    - 2107.0
+    moment_tensor:
+      Mxx: 1.0
+      Myy: 1.0
+      Mxy: 0
+    wavelet:
+      type: ricker
+      frequency: 10.0
+      amplitude: 1.0e10
+      delay: 0.12
 receivers:
   output:
-    format: ascii
-    filename: "seismograms"
-
-  type: [DISP]
-
+    formats:
+    - ascii
+    filename: seismograms
+  type:
+  - DISP
   list:
-    - name: "R_top"
-      location: [3000.0, 2800.0]
-    - name: "R_bottom"
-      location: [3000.0, 200.0]
-    - name: "R_left"
-      location: [200.0, 1500.0]
-    - name: "R_right"
-      location: [5800.0, 1500.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
+  - name: R_top
+    location:
+    - 3000.0
+    - 2800.0
+  - name: R_bottom
+    location:
+    - 3000.0
+    - 200.0
+  - name: R_left
+    location:
+    - 200.0
+    - 1500.0
+  - name: R_right
+    location:
+    - 5800.0
+    - 1500.0
 device:
   type: cpu
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    components:
+    - -1
+    - 0
+    - 1
+    enabled: true
+    interval: 100
+    fields:
+    - DISP
+    formats:
+    - type: paraview
+      refinement: 2
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 600
+      - 300
+  material:
+    enabled: true
+    fields:
+    - vp
+    - vs
+    - rho
+    formats:
+    - type: paraview
+      refinement: 2
+      data_format: binary32

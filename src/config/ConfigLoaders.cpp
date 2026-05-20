@@ -41,14 +41,6 @@ static void ValidateSourceDimensions(const std::vector<SourceDef>& defs, int dim
                           << ") has z-direction " << def.direction[2]
                           << " but simulation is 2D. Z-direction will be ignored.\n";
             }
-            if (def.type == "moment_tensor") {
-                // For 2D, M[2] (Mzz), M[4] (Mxz), M[5] (Myz) should be zero
-                if (std::abs(def.M[2]) > 1e-10 || std::abs(def.M[4]) > 1e-10 || std::abs(def.M[5]) > 1e-10) {
-                    std::cerr << "WARNING: Source " << i << " (" << def.name
-                              << ") has 3D moment tensor components (Mzz, Mxz, Myz) "
-                              << "but simulation is 2D. These will be ignored.\n";
-                }
-            }
         }
     }
     // Note: For 3D, z=0 is a valid coordinate, so no warning needed
@@ -187,7 +179,7 @@ MaterialConfig LoadMaterialConfig(const YamlConfig& config) {
     // Get material type first (isotropic_acoustic, isotropic_elastic, etc.)
     mat_config.material_type = config.GetMaterialType();
 
-    // Get format (constant, grid, hdf5, by_attribute, by_attribute_mixed, adios2)
+    // Get format (constant, grid, by_attribute, by_attribute_mixed, adios2)
     std::string format = config.GetMaterialFormat();
     mat_config.format = format;
 
@@ -218,10 +210,6 @@ MaterialConfig LoadMaterialConfig(const YamlConfig& config) {
     else if (format == "grid") {
         // Get the unified material file path
         mat_config.material_file = config.GetMaterialFile();
-    }
-    else if (format == "hdf5") {
-        // HDF5 file path and dataset names
-        MFEM_ABORT("HDF5 material loading not yet implemented.");
     }
     else if (format == "by_attribute") {
         // by_attribute only reads from file
@@ -309,29 +297,11 @@ Mesh* LoadMesh(const YamlConfig& config) {
             }
         }
 
-        // Optional attribute split by y-threshold (matches partition_mesh
-        // --attr-y-threshold semantics): elements with center.y > threshold
-        // get attribute=1 (e.g. water), the rest get attribute=2 (solid).
-        real_t attr_y = config.GetMeshAttrYThreshold();
-        if (!std::isnan(attr_y)) {
-            for (int e = 0; e < mesh->GetNE(); e++) {
-                Vector center;
-                mesh->GetElementCenter(e, center);
-                int attr = (center(1) > attr_y) ? 1 : 2;
-                mesh->SetAttribute(e, attr);
-            }
-            mesh->SetAttributes();
-        }
-
         return mesh;
 
     } else {
         std::string mesh_file = config.GetMeshFile();
-        std::string mesh_format = config.GetMeshFormat();
-        // (void)mesh_format;
-
         Mesh* mesh = new Mesh(mesh_file.c_str(), 1, 1);
-
         return mesh;
     }
 }
@@ -436,7 +406,7 @@ ParMesh* LoadParMesh(const YamlConfig& config, MPI_Comm comm) {
     if (rank == 0) {
         Mesh* serial_mesh = LoadMesh(config);
 
-        std::string partition_method = config.GetMeshPartition();
+        std::string partition_method = config.GetMeshPartitionMethod();
         int* partitioning = nullptr;
 
         if (partition_method == "cartesian") {

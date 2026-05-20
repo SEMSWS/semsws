@@ -5,6 +5,7 @@
 
 #include "srcrecv/Receiver.hpp"
 #include "util/PointFinder.hpp"
+#include <sstream>
 
 namespace SEM {
 
@@ -41,29 +42,43 @@ void ReceiverArray::LocateReceivers() {
     const Array<unsigned int>& rank_arr = finder.GetProc();
     const Vector& ref_posi = finder.GetReferencePosition();
 
-    // Update receiver data - each receiver is assigned to its owning rank
+    // Update receiver data — each kept receiver is assigned to its owning
+    // rank. Receivers whose position lies outside the mesh are silently
+    // dropped and recorded in filtered_log_ so the user can audit which
+    // stations were excluded (typical case: coupled fluid-solid sim where
+    // a fluid receiver position lies in the solid submesh).
     count = 0;
     for (auto& entry : receivers_) {
+        std::vector<ReceiverData> kept;
+        kept.reserve(entry.second.size());
         for (auto& rec : entry.second) {
-            if (code_arr[count] == 2) {
-                MFEM_ABORT("Receiver not found in mesh: " << rec.Name()
-                           << " at position [" << rec.Position()[0]
-                           << (space_dim_ > 1 ? ", " + std::to_string(rec.Position()[1]) : "")
-                           << (space_dim_ > 2 ? ", " + std::to_string(rec.Position()[2]) : "")
-                           << "]");
+            const unsigned int code = code_arr[count];
+            const int idx = count;
+            count++;
+            if (code == 2) {
+                std::ostringstream pos_str;
+                pos_str << "[" << rec.Position()[0];
+                for (int d = 1; d < space_dim_; ++d) {
+                    pos_str << ", " << rec.Position()[d];
+                }
+                pos_str << "]";
+                filtered_log_.push_back({rec.Name(),
+                                         ReceiverTypeToString(rec.Type()),
+                                         "outside mesh at " + pos_str.str()});
+                num_total_--;
+                continue;
             }
 
             Vector ref_pos(space_dim_);
             for (int d = 0; d < space_dim_; d++) {
-                ref_pos[d] = ref_posi[count * space_dim_ + d];
+                ref_pos[d] = ref_posi[idx * space_dim_ + d];
             }
 
-            // elem_arr is the LOCAL element index on the owning rank (rank_arr)
-            bool is_local = (static_cast<int>(rank_arr[count]) == local_rank_);
-            rec.SetLocation(elem_arr[count], rank_arr[count], ref_pos, is_local);
-
-            count++;
+            bool is_local = (static_cast<int>(rank_arr[idx]) == local_rank_);
+            rec.SetLocation(elem_arr[idx], rank_arr[idx], ref_pos, is_local);
+            kept.push_back(std::move(rec));
         }
+        entry.second = std::move(kept);
     }
 }
 

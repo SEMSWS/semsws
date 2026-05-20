@@ -21,7 +21,7 @@ def user_template() -> dict:
     return {
         "name": "demo",
         "simulation": {"dim": 2, "order": 4, "mode": "forward",
-                       "time": {"steps": 1000, "dt": 1e-3}},
+                       "steps": 1000, "dt": 1e-3},
         "mesh": {"type": "internal", "dim": 2,
                  "origin": [0.0, 0.0], "size": [1000.0, 1000.0],
                  "elements": [10, 10]},
@@ -81,17 +81,16 @@ def test_render_shot_yaml_overrides_sources_receivers(
         out_path=out,
     )
     body = yaml.safe_load(out.read_text())
-    assert body["sources"] == {"mode": "simultaneous",
-                                "format": "hdf5",
-                                "file": "/abs/path/observations.h5",
+    assert body["sources"] == {"file": "/abs/path/observations.h5",
                                 "shot_id": 7}
-    assert body["receivers"]["format"] == "hdf5"
-    assert body["receivers"]["file"] == "/abs/path/observations.h5"
-    assert body["receivers"]["shot_id"] == 7
-    # Preserve user's `type` list
+    # Preserve user's `type` list; receivers geometry inherits from sources.file
     assert body["receivers"]["type"] == ["VEL"]
     # Force HDF5 output
-    assert body["receivers"]["output"]["formats"] == [{"type": "hdf5"}]
+    assert body["receivers"]["output"]["formats"] == ["hdf5"]
+    # No file/format/shot_id under receivers — auto-inherits from sources.file
+    assert "file" not in body["receivers"]
+    assert "format" not in body["receivers"]
+    assert "shot_id" not in body["receivers"]
 
 
 def test_render_shot_yaml_keeps_mesh_material_unmodified(
@@ -111,7 +110,7 @@ def test_render_with_mesh_material_override(
     tmp_path: Path, user_template: dict,
 ):
     out = tmp_path / "shot_0001" / "config.yaml"
-    new_mesh = {"type": "partitioned", "directory": "/shared/parts",
+    new_mesh = {"type": "prepart_mfem", "directory": "/shared/parts",
                  "max_freq": 30.0, "ppw": 5.0}
     new_mat = {"type": "isotropic_elastic",
                 "vp": {"format": "adios2", "files": {"vp": "/x/vp.bp"}}}

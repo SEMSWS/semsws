@@ -1,117 +1,104 @@
-
-name: "3D Acoustic Analytic Benchmark"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
-
+name: 3D Acoustic Analytic Benchmark
 simulation:
   dimension: 3
-  order: 4            # NGLL = 5
-
-  time:
-    dt: 0.005
-    steps: 1200
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 100
-    wavefield:
-      enabled: false
-      interval: 500
-      formats:
-        - type: glvis
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
-
+  order: 4
+  dt: 0.005
+  steps: 1200
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 100
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0, 0.0]
-  size: [24000.0, 24000.0, 20000.0]
-  elements: [40, 40, 36]
+  origin:
+  - 0.0
+  - 0.0
+  - 0.0
+  size:
+  - 24000.0
+  - 24000.0
+  - 20000.0
+  elements:
+  - 40
+  - 40
+  - 36
   max_freq: 2.5
   ppw: 5.0
-
-# =============================================================================
-# Material Model
-# =============================================================================
-
 material:
   type: isotropic_acoustic
   format: constant
   vp: 3500.0
   rho: 2300.0
-
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
-
 boundary:
   absorbing:
-    type: cerjan
-    sides: [bottom, right, left, front, back, top]
+    sides:
+    - bottom
+    - right
+    - left
+    - front
+    - back
+    - top
     thickness: 1200.0
     alpha: 0.3
-
-  dirichlet:
-    attributes: []
-
-# =============================================================================
-# Sources
-# =============================================================================
-
+  dirichlet: []
 sources:
-  mode: simultaneous
-
   list:
-    - id: 1
-      name: "Acoustic Point Source"
-      type: pressure
-      location: [12000.0, 12000.0, 12000.0]
-
-      wavelet:
-        type: ricker
-        frequency: 1.0
-        delay: 1.5
-        amplitude: 1.0e10
-
-# =============================================================================
-# Receivers
-# =============================================================================
-
+  - type: pressure
+    location:
+    - 12000.0
+    - 12000.0
+    - 12000.0
+    wavelet:
+      type: ricker
+      frequency: 1.0
+      delay: 1.5
+      amplitude: 1.0e10
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "seismograms"
-
-  type: [PS]
-
+    - ascii
+    filename: seismograms
+    buffer_steps: 100
+  type:
+  - PS
   list:
-    - name: "R1"
-      location: [15000.0, 13000.0, 8000.0]
-    - name: "R2"
-      location: [13000.0, 15000.0, 8000.0]
-    - name: "R3"
-      location: [18000.0, 13000.0, 8000.0]
-    - name: "R4"
-      location: [13000.0, 18000.0, 8000.0]
-    - name: "R5"
-      location: [18000.0, 13000.0, 10000.0]
-    - name: "R6"
-      location: [13000.0, 18000.0, 10000.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
-
+  - name: R1
+    location:
+    - 15000.0
+    - 13000.0
+    - 8000.0
+  - name: R2
+    location:
+    - 13000.0
+    - 15000.0
+    - 8000.0
+  - name: R3
+    location:
+    - 18000.0
+    - 13000.0
+    - 8000.0
+  - name: R4
+    location:
+    - 13000.0
+    - 18000.0
+    - 8000.0
+  - name: R5
+    location:
+    - 18000.0
+    - 13000.0
+    - 10000.0
+  - name: R6
+    location:
+    - 13000.0
+    - 18000.0
+    - 10000.0
 device:
   type: hip
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    enabled: false
+    interval: 500
+    formats:
+    - glvis

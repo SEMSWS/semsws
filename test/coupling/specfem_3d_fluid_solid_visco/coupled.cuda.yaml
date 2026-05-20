@@ -1,30 +1,17 @@
-# SEMSWS coupled-material config for the fluid-solid vs. SPECFEM3D
-# benchmark. All numbers come from examples/coupling_vs_specfem/config.py
-# through gen.py — do NOT hand-edit runs/semsws/coupled.yaml.
-name: "SEMSWS coupled vs SPECFEM3D (fluid-solid, moment-tensor source)"
-
+name: SEMSWS coupled vs SPECFEM3D (fluid-solid, moment-tensor source)
 simulation:
   dimension: 3
   order: 4
-  time:
-    dt: 0.0005
-    steps: 4000
-    cfl_factor: 0.3
-  output:
-    directory: "./out"
-    log_interval: 500
-    wavefield:
-      enabled: true
-      interval: 500
-      formats:
-        - type: glvis
-
+  dt: 0.0005
+  steps: 4000
+  cfl_factor: 0.3
+  directory: ./out
+  log_interval: 500
 mesh:
   type: external
   file: probe.msh
   max_freq: 14.0
   ppw: 5.0
-
 material:
   type: coupled
   fluid:
@@ -37,8 +24,7 @@ material:
       enabled: false
       f0: 2
       n_units: 3
-      Qkappa: 10
-
+      qkappa: 10
   solid:
     attribute: 2
     type: isotropic_elastic
@@ -50,61 +36,60 @@ material:
       enabled: true
       f0: 2
       n_units: 3
-      Qkappa: 40
-      Qmu: 40
-
-boundary:
-  absorbing:
-    type: cerjan
-    sides: []
-    thickness: 0.0
-    alpha: 0.0
-  dirichlet:
-    attributes: []
-
+      qkappa: 40
+      qmu: 40
+boundary: {}
 sources:
-  mode: simultaneous
   list:
-    - id: 1
-      name: "solid-cmt"
-      # Moment-tensor point source in the solid half. The SAME
-      # normalized Ricker STF is read by SPECFEM3D (via CMTSOLUTION
-      # last-line path + USE_EXTERNAL_SOURCE_FILE=.true.), so
-      # waveforms are directly comparable up to numerical scheme
-      # differences between NewmarkCD (SEMSWS) and SPECFEM3D's
-      # default 2nd-order explicit time stepper.
-      type: "moment_tensor"
-      location: [837.0, 419.0, 1223.0]
-      direction: [0.0, 0.0, 1.0]
-      moment_tensor:
-        Mxx: 1000000000000000.0
-        Myy: 1000000000000000.0
-        Mzz: 1000000000000000.0
-        Mxy: 0.0
-        Mxz: 0.0
-        Myz: 0.0
-      wavelet:
-        type: ricker
-        frequency: 5.0
-        delay: 0.3
-        amplitude: 1.0
-
+  - type: moment_tensor
+    location:
+    - 837.0
+    - 419.0
+    - 1223.0
+    moment_tensor:
+      Mxx: 1000000000000000.0
+      Myy: 1000000000000000.0
+      Mzz: 1000000000000000.0
+      Mxy: 0.0
+      Mxz: 0.0
+      Myz: 0.0
+    wavelet:
+      type: ricker
+      frequency: 5.0
+      delay: 0.3
+      amplitude: 1.0
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "rcv"
-  type: [PS, DISP, VEL, ACC]
+    - ascii
+    filename: rcv
+    buffer_steps: 100
+  type:
+  - PS
+  - DISP
+  - VEL
+  - ACC
   list:
-    - name: "R01"
-      location: [800.0, 400.0, 400.0]
-      type: [PS]
-    - name: "R02"
-      location: [800.0, 400.0, 880.0000000000001]
-      type: [DISP, VEL, ACC]
-    - name: "R03"
-      location: [800.0, 400.0, 1360.0]
-      type: [DISP, VEL, ACC]
-
+  - name: R01
+    location:
+    - 800.0
+    - 400.0
+    - 400.0
+  - name: R02
+    location:
+    - 800.0
+    - 400.0
+    - 880.0000000000001
+  - name: R03
+    location:
+    - 800.0
+    - 400.0
+    - 1360.0
 device:
   type: cuda
+vis:
+  wavefield:
+    enabled: true
+    interval: 500
+    formats:
+    - glvis

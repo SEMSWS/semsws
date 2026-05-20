@@ -11,7 +11,7 @@
  *   1. Load()              — rank 0 reads HDF5 catalog, broadcasts metadata
  *   2. ReceiverArray::Setup() [external] marks is_local
  *   3. FetchOwnedData()    — per-rank hyperslab reads (one per component)
- *   4. AlignToSimulation() — per-rank in-place resample (optional)
+ *   4. AlignToSimulation() — per-rank auto-resample on grid mismatch
  */
 
 #include "srcrecv/ObservedData.hpp"
@@ -69,16 +69,17 @@ void ExpandCatalog(const HDF5ObservedCatalog& cat,
 // Phase 1: Load (rank-0 catalog + metadata broadcast)
 // =============================================================================
 
-void ObservedData::Load(const ObservedSourceDef& obs, int space_dim,
+void ObservedData::Load(const std::string& path, int shot_id, int space_dim,
                         MPI_Comm comm) {
     comm_ = comm;
     space_dim_ = space_dim;
-    hdf5_path_ = obs.file;
+    shot_id_ = shot_id;
+    hdf5_path_ = path;
 
     int rank;
     MPI_Comm_rank(comm, &rank);
     if (rank == 0) {
-        LoadCatalogOnRank0(obs.file, space_dim);
+        LoadCatalogOnRank0(path, space_dim);
     }
     BroadcastCatalog(comm);
 }
@@ -86,7 +87,7 @@ void ObservedData::Load(const ObservedSourceDef& obs, int space_dim,
 void ObservedData::LoadCatalogOnRank0(const std::string& path, int space_dim) {
     receivers_.clear();
     HDF5ObservedCatalog cat =
-        HDF5ObservedReader::ReadCatalog(path, space_dim);
+        HDF5ObservedReader::ReadCatalog(path, space_dim, shot_id_);
     num_samples_ = cat.n_samples;
     dt_ = static_cast<real_t>(cat.dt);
     t0_ = static_cast<real_t>(cat.t0);
@@ -211,7 +212,7 @@ void ObservedData::FetchOwnedData(const ReceiverArray& receivers,
 
     if (reqs.empty()) return;
 
-    auto results = HDF5ObservedReader::ReadOwnedChannels(hdf5_path_, reqs);
+    auto results = HDF5ObservedReader::ReadOwnedChannels(hdf5_path_, reqs, shot_id_);
     MFEM_VERIFY(results.size() == reqs.size(),
                 "HDF5ObservedReader: result/request size mismatch");
 
@@ -248,23 +249,36 @@ void ObservedData::FetchOwnedData(const ReceiverArray& receivers,
 }
 
 // =============================================================================
-// Phase 4: Optional resample
+// Phase 4: Align observed grid to simulation grid (auto-resample on mismatch)
 // =============================================================================
 
-void ObservedData::AlignToSimulation(int sim_nt, real_t sim_dt,
-                                      const ObservedResampleDef& resample) {
-    if (!resample.enabled) {
-        std::string err = ValidateCompatibility(sim_nt, sim_dt);
-        MFEM_VERIFY(err.empty(),
-            "Observed-data/simulation mismatch (strict mode): " << err
-            << ". Enable observed.resample.enabled=true to resample.");
+void ObservedData::AlignToSimulation(int sim_nt, real_t sim_dt) {
+    // Bit-exact grid match → no-op fast path.
+    constexpr real_t kDtTol = static_cast<real_t>(1e-12);
+    if (num_samples_ == sim_nt && std::abs(dt_ - sim_dt) <= kDtTol) {
         return;
     }
 
-    const ObservedResampler::Method method =
-        ObservedResampler::ParseMethod(resample.method);
-    const int lanczos_a = resample.lanczos_a;
-    const real_t src_t0 = t0_;  // keep simulation starting at observed t0
+    // Window-coverage check (resample cannot fill a missing tail).
+    const real_t obs_end = t0_ + dt_ * static_cast<real_t>(num_samples_ - 1);
+    const real_t sim_end = t0_ + sim_dt * static_cast<real_t>(sim_nt - 1);
+    MFEM_VERIFY(obs_end + kDtTol >= sim_end,
+        "Observed t-window [" << t0_ << ", " << obs_end << "]"
+        " does not cover simulation [" << t0_ << ", " << sim_end << "]."
+        " Regenerate the observed file with a long enough record.");
+
+    int rank;
+    MPI_Comm_rank(comm_, &rank);
+    if (rank == 0) {
+        mfem::out << "[WARN] Observed grid (dt=" << dt_ << ", n=" << num_samples_
+                  << ") does not match simulation (dt=" << sim_dt
+                  << ", n=" << sim_nt << "). Auto-resampling via Lanczos(a=8)."
+                  << " Pre-process the observed file if unintentional." << std::endl;
+    }
+
+    const ObservedResampler::Method method = ObservedResampler::Method::Lanczos;
+    const int lanczos_a = 8;
+    const real_t src_t0 = t0_;
 
     for (auto& obs : receivers_) {
         if (!obs.is_local) {

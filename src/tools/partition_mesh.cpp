@@ -3,7 +3,7 @@
  * @brief Tool to partition a serial mesh into multiple files for memory-efficient loading
  *
  * This tool creates pre-partitioned mesh files that can be loaded by SEMSWS
- * with mesh.type: partitioned configuration. Each MPI rank will read only
+ * with mesh.type: prepart_mfem configuration. Each MPI rank will read only
  * its own partition file, reducing memory usage from O(N) to O(N/P).
  *
  * Usage:

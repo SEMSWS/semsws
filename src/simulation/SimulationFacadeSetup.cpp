@@ -169,10 +169,11 @@ SimulationFacade<Dim>::SetupMeshFromConfig() {
     // Set high-order mesh curvature for libCEED compatibility
     mesh->SetCurvature(order, true, dim, mfem::Ordering::byNODES);
 
-    // Save mesh if enabled in config (mesh.save: true)
+    // Save mesh if enabled in config (vis.mesh: true)
     if (config_->GetMeshSave()) {
-        std::string output_dir = config_->GetOutputDirectory();
-        mesh->SaveAsOne(output_dir + "/mesh.mesh");
+        std::string vis_dir = config_->GetVisDirectory();
+        mkdir(vis_dir.c_str(), 0755);
+        mesh->SaveAsOne((vis_dir + "/mesh.mesh").c_str());
     }
 
     // Set mesh in components
@@ -226,34 +227,6 @@ SimulationFacade<Dim>::SetupMaterialFromConfig() {
         mat_config, components_.FESScalar(), ir, dim);
 
     material_ready_ = true;
-
-    // Export model to ADIOS2 if enabled
-    if (config_->IsExportModelEnabled()) {
-        std::string export_dir = config_->GetExportModelDir();
-        if (rank_ == 0) {
-            CreateDirectory(export_dir);
-        }
-        MPI_Barrier(comm_);
-
-        SEM::MaterialType export_mat_type = material_->GetType();
-        if (export_mat_type == SEM::MaterialType::IsotropicAcoustic) {
-            if constexpr (dim == 2) {
-                const auto& acoustic_mat = static_cast<const AcousticMaterialBase2D&>(*material_);
-                ExportAcousticMaterialBP(acoustic_mat, export_dir, "", comm_);
-            } else {
-                const auto& acoustic_mat = static_cast<const AcousticMaterialBase3D&>(*material_);
-                ExportAcousticMaterialBP(acoustic_mat, export_dir, "", comm_);
-            }
-        } else if (export_mat_type == SEM::MaterialType::IsotropicElastic) {
-            if constexpr (dim == 2) {
-                const auto& elastic_mat = static_cast<const ElasticMaterialBase2D&>(*material_);
-                ExportElasticMaterialBP(elastic_mat, export_dir, "", comm_);
-            } else {
-                const auto& elastic_mat = static_cast<const ElasticMaterialBase3D&>(*material_);
-                ExportElasticMaterialBP(elastic_mat, export_dir, "", comm_);
-            }
-        }
-    }
 
     return *this;
 }
@@ -567,7 +540,7 @@ void SimulationFacade<Dim>::DeviceInit() {
 
     // 4. Receivers (GPU recording buffers)
     if (receivers_) {
-        int buffer_steps = config_ ? config_->GetSeismoBufferSteps() : 0;
+        int buffer_steps = config_ ? config_->GetReceiverBufferSteps() : 0;
         receivers_->DeviceInit(buffer_steps);
     }
 

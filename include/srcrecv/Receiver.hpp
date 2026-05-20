@@ -253,7 +253,11 @@ public:
      * @param nt Number of time steps
      * @param dt Time step
      *
-     * This locates receivers in the mesh and precomputes interpolation data.
+     * Receivers whose position is outside the mesh are silently dropped
+     * and logged to filtered_log_ (see SaveFilteredLog). This makes
+     * coupled fluid-solid simulations work without per-receiver type
+     * overrides — each submesh's array auto-keeps only the receivers
+     * physically inside it.
      */
     void Setup(int nt, real_t dt);
 
@@ -278,9 +282,9 @@ public:
     /**
      * @brief Record data at time step (auto-detect dimension and device)
      * @param step Current time step
-     * @param seismo_buffer_steps GPU buffer size (0 = all steps, ignored on CPU)
+     * @param buffer_steps GPU buffer size (0 = all steps, ignored on CPU)
      */
-    void Record(int step, int seismo_buffer_steps = 0);
+    void Record(int step, int buffer_steps = 0);
 
     // -------------------------------------------------------------------------
     // Output

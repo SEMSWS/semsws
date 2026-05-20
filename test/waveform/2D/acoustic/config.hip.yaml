@@ -1,116 +1,92 @@
-# =============================================================================
-# SEMSWS Acoustic Homogeneous Test - Matched with SPECFEM2D
-# =============================================================================
-# This configuration matches SPECFEM2D Par_file exactly for comparison
-
-name: "Acoustic Homogeneous 2D"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
+name: Acoustic Homogeneous 2D
 simulation:
   dimension: 2
-  order: 4              # NGLL=5, matching SPECFEM2D default (NGNOD=9)
-
-  time:
-    steps: 10000        # NSTEP = 10000
-    dt: 0.0001          # DT = 0.0001
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 100000   # NTSTEP_BETWEEN_OUTPUT_INFO = 200
-    wavefield:
-      enabled: false
-      interval: 500
-      formats:
-        - type: glvis
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
+  order: 4
+  steps: 10000
+  dt: 0.0001
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 100000
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0]
-  size: [1000.0, 500.0]   # xmin=0, xmax=1000, mesh interfaces for 500m height
-  elements: [100, 50]     # nx=100, 50 elements in y
+  origin:
+  - 0.0
+  - 0.0
+  size:
+  - 1000.0
+  - 500.0
+  elements:
+  - 100
+  - 50
   max_freq: 75.0
   ppw: 5.0
-
-# =============================================================================
-# Material Properties
-# =============================================================================
 material:
   type: isotropic_acoustic
   format: constant
-  # From Par_file: 1 1 1000.0d0 1500.0d0 0 0 0 9999 9999 0 0 0 0 0 0
-  # Format: mat_id, type, rho, vp, ...
-  vp: 1500.0            # P-wave velocity (m/s)
-  rho: 1000.0           # Density (kg/m^3)
+  vp: 1500.0
+  rho: 1000.0
   attenuation:
     enabled: false
     f0: 1.0
     n_units: 3
-    Qkappa: 10.0
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
+    qkappa: 10.0
 boundary:
   absorbing:
-    type: cerjan
-    sides: [] #[bottom, right, left]
+    sides: []
     thickness: 200.0
     alpha: 6
-
   dirichlet:
-    attributes: [top, right, left, bottom]
-
-
-# =============================================================================
-# Sources
-# =============================================================================
+  - top
+  - right
+  - left
+  - bottom
 sources:
-  mode: sequential
-
+  shot_id: 1
   list:
-    - id: 1
-      name: "Source 1"
-      type: pressure
-      location: [500.0, 499.0]
-      direction: [0.0, -1.0]
-      wavelet:
-        type: ricker
-        frequency: 30.0
-        amplitude: 1.0e10
-        delay: 0.05           # t0 = 1.2/f0 = 0.04, use 0.05 for safety
-
-# =============================================================================
-# Receivers
-# =============================================================================
+  - type: pressure
+    location:
+    - 500.0
+    - 499.0
+    wavelet:
+      type: ricker
+      frequency: 30.0
+      amplitude: 1.0e10
+      delay: 0.05
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "seismograms"
-
-  type: [PS]
-
+    - ascii
+    filename: seismograms
+    buffer_steps: 100
+  type:
+  - PS
   list:
-    - name: "R001"
-      location: [400.0, 300.0]
-    - name: "R002"
-      location: [450.0, 300.0]
-    - name: "R003"
-      location: [500.0, 300.0]
-    - name: "R004"
-      location: [550.0, 300.0]
-    - name: "R005"
-      location: [600.0, 300.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
+  - name: R001
+    location:
+    - 400.0
+    - 300.0
+  - name: R002
+    location:
+    - 450.0
+    - 300.0
+  - name: R003
+    location:
+    - 500.0
+    - 300.0
+  - name: R004
+    location:
+    - 550.0
+    - 300.0
+  - name: R005
+    location:
+    - 600.0
+    - 300.0
 device:
   type: hip
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    enabled: false
+    interval: 500
+    formats:
+    - glvis

@@ -113,14 +113,6 @@ public:
      */
     void Run();
 
-    /**
-     * @brief Run simulation in sequential source mode
-     *
-     * For each source: reset state, run full simulation, save receivers.
-     * Includes wavefield output and progress reporting per source.
-     */
-    void RunSequential();
-
 private:
     std::vector<std::unique_ptr<WavefieldWriter>> wavefield_writers_;
     bool progress_enabled_ = true;

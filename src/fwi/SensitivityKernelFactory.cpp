@@ -31,37 +31,11 @@ namespace SEM {
 // 2D Elastic
 // =============================================================================
 
-static void EnforceQInversionPreconditions(const MaterialBase& material,
-                                            const std::string& backend,
-                                            bool invert_Q,
-                                            const char* factory_name)
-{
-    if (!invert_Q) return;
-    if (!material.HasAttenuation()) {
-        MFEM_ABORT(factory_name << ": invert_Q=true requires an attenuating "
-                   "material (material.attenuation.enabled + Q* set)");
-    }
-    if (backend == "hand") {
-        MFEM_ABORT(factory_name << ": invert_Q=true requires backend='ad'. "
-                   "The hand backend does not accumulate K_Q*; use 'ad' or "
-                   "turn off invert_Q.");
-    }
-}
-
 std::unique_ptr<SensitivityKernelBase2D>
 CreateElasticSensitivityKernel2D(const ElasticMaterialBase2D& material,
                                  mfem::ParFiniteElementSpace& fes,
-                                 const std::string& backend,
-                                 bool invert_Q)
+                                 const std::string& backend)
 {
-    EnforceQInversionPreconditions(material, backend, invert_Q,
-                                   "CreateElasticSensitivityKernel2D");
-    if (invert_Q) {
-        MFEM_ABORT("CreateElasticSensitivityKernel2D: K_Q for viscoelastic is "
-                   "not yet implemented (Phase V2). Set invert_Q: false or "
-                   "wait for Visco_IsotropicElasticSensitivityAD2D_Q.");
-        return nullptr;  // unreachable
-    }
     switch (material.GetType()) {
         case MaterialType::IsotropicElastic: {
             const auto& m = static_cast<const IsotropicElasticMaterial&>(material);
@@ -92,16 +66,8 @@ CreateElasticSensitivityKernel2D(const ElasticMaterialBase2D& material,
 std::unique_ptr<SensitivityKernelBase3D>
 CreateElasticSensitivityKernel3D(const ElasticMaterialBase3D& material,
                                  mfem::ParFiniteElementSpace& fes,
-                                 const std::string& backend,
-                                 bool invert_Q)
+                                 const std::string& backend)
 {
-    EnforceQInversionPreconditions(material, backend, invert_Q,
-                                   "CreateElasticSensitivityKernel3D");
-    if (invert_Q) {
-        MFEM_ABORT("CreateElasticSensitivityKernel3D: K_Q for viscoelastic is "
-                   "not yet implemented (Phase V2).");
-        return nullptr;  // unreachable
-    }
     switch (material.GetType()) {
         case MaterialType::IsotropicElastic: {
             const auto& m = static_cast<const IsotropicElasticMaterial3D&>(material);
@@ -132,16 +98,8 @@ CreateElasticSensitivityKernel3D(const ElasticMaterialBase3D& material,
 std::unique_ptr<SensitivityKernelBase2D>
 CreateAcousticSensitivityKernel2D(const AcousticMaterialBase2D& material,
                                   mfem::ParFiniteElementSpace& fes,
-                                  const std::string& backend,
-                                  bool invert_Q)
+                                  const std::string& backend)
 {
-    EnforceQInversionPreconditions(material, backend, invert_Q,
-                                   "CreateAcousticSensitivityKernel2D");
-    if (invert_Q) {
-        MFEM_ABORT("CreateAcousticSensitivityKernel2D: K_Qκ for viscoacoustic "
-                   "is not yet implemented (Phase V1).");
-        return nullptr;  // unreachable
-    }
     switch (material.GetType()) {
         case MaterialType::IsotropicAcoustic: {
             const auto& m = static_cast<const IsotropicAcousticMaterial&>(material);
@@ -172,16 +130,8 @@ CreateAcousticSensitivityKernel2D(const AcousticMaterialBase2D& material,
 std::unique_ptr<SensitivityKernelBase3D>
 CreateAcousticSensitivityKernel3D(const AcousticMaterialBase3D& material,
                                   mfem::ParFiniteElementSpace& fes,
-                                  const std::string& backend,
-                                  bool invert_Q)
+                                  const std::string& backend)
 {
-    EnforceQInversionPreconditions(material, backend, invert_Q,
-                                   "CreateAcousticSensitivityKernel3D");
-    if (invert_Q) {
-        MFEM_ABORT("CreateAcousticSensitivityKernel3D: K_Qκ for viscoacoustic "
-                   "is not yet implemented (Phase V1).");
-        return nullptr;  // unreachable
-    }
     switch (material.GetType()) {
         case MaterialType::IsotropicAcoustic: {
             const auto& m = static_cast<const IsotropicAcousticMaterial3D&>(material);

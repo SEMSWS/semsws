@@ -94,6 +94,7 @@ void SimulationFacade<Dim>::Initialize() {
     // Setup runner dependencies
     runner_.SetOperator(op_.get());
     runner_.SetIntegrator(integrator_.get());
+    if (config_) runner_.SetT0(config_->GetT0());
 
     // Initialize via runner
     runner_.Initialize(components_.U(), components_.V(), components_.A());
@@ -565,8 +566,8 @@ bool SimulationFacade<Dim>::CheckWavelengthSampling(real_t f_max, real_t ppw_req
 template<int Dim>
 void SimulationFacade<Dim>::RecordReceivers() {
     if (receivers_ready_ && receivers_) {
-        int seismo_buffer_steps = config_ ? config_->GetSeismoBufferSteps() : 0;
-        receivers_->Record(runner_.CurrentStep(), seismo_buffer_steps);
+        int buffer_steps = config_ ? config_->GetReceiverBufferSteps() : 0;
+        receivers_->Record(runner_.CurrentStep(), buffer_steps);
     }
 }
 

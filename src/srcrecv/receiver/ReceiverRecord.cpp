@@ -21,7 +21,7 @@ void ReceiverArray::SetFields(ParGridFunction* u,
     udot2_ = udot2;
 }
 
-void ReceiverArray::Record(int step, int seismo_buffer_steps) {
+void ReceiverArray::Record(int step, int buffer_steps) {
     PROFILE_REGION("ReceiverRecord");
 
     if (step > nt_) {
@@ -30,7 +30,7 @@ void ReceiverArray::Record(int step, int seismo_buffer_steps) {
 
     // Use GPU path if device is enabled
     if (Device::Allows(Backend::DEVICE_MASK)) {
-        RecordDevice(step, seismo_buffer_steps);
+        RecordDevice(step, buffer_steps);
     } else {
         // CPU path
         if (space_dim_ == 2) {

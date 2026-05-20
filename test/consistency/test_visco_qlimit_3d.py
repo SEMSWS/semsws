@@ -56,10 +56,10 @@ def mutate_config(
     with open(src) as f:
         cfg = yaml.safe_load(f)
 
-    out_cfg = cfg.setdefault("simulation", {}).setdefault("output", {})
-    out_cfg["directory"] = str(outdir)
-    if "wavefield" in out_cfg:
-        out_cfg["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
 
     cfg.setdefault("device", {})["type"] = device
 
@@ -70,7 +70,7 @@ def mutate_config(
             "enabled": True,
             "f0": F0_HZ,
             "n_units": N_UNITS,
-            "Qkappa": QKAPPA_LIMIT,
+            "qkappa": QKAPPA_LIMIT,
         })
     else:
         att["enabled"] = False
@@ -81,7 +81,7 @@ def mutate_config(
     # schema cleanup.
     recv_out = cfg["receivers"].setdefault("output", {})
     recv_out.pop("format", None)
-    recv_out["formats"] = [{"type": "ascii"}]
+    recv_out["formats"] = ["ascii"]
     recv_out["filename"] = "seismograms"
 
     with open(dst, "w") as f:

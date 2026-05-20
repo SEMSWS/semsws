@@ -6,7 +6,7 @@
  * - Forward simulation with Revolve-controlled checkpointing
  * - Adjoint (time-reversed) simulation with kernel accumulation
  * - L2 waveform misfit computation
- * - Sequential source mode support
+ * - Per-source loop (independent adjoint sweep per source)
  *
  * Uses Revolve (Griewank & Walther 2000) for optimal checkpointing:
  * minimizes forward recomputations given fixed checkpoint slots.
@@ -34,18 +34,21 @@ namespace SEM {
  * - "inversion": full gradient computation (forward + adjoint + kernel)
  * - "misfit_only": forward + misfit computation only (no adjoint/kernel)
  *
- * Workflow per source (inversion mode):
- * 1. Load observed data from SU file
+ * Workflow per shot (inversion mode), all configured sources fire simultaneously:
+ * 1. Load observed data from the bundled HDF5 (sources.file + shot_id)
  * 2. Revolve-controlled forward sweep: record synthetics + save checkpoints
  * 3. At FirstTurn: compute residual → build adjoint sources
  * 4. Revolve-scheduled backward sweep: replay forward segments +
  *    adjoint steps with kernel accumulation
- * 5. Accumulate kernel across sources, save to file
+ * 5. Save kernel + per-shot misfit to file
  *
- * Workflow per source (misfit_only mode):
- * 1. Load observed data from SU file
+ * Workflow per shot (misfit_only mode):
+ * 1. Load observed data from the bundled HDF5
  * 2. Forward sweep (0→T): record synthetics
  * 3. Compute misfit, save to file (no adjoint, no kernel)
+ *
+ * Multi-shot inversion is handled by the driver (per-shot YAML synthesis)
+ * which accumulates kernels across shots externally.
  */
 template<int Dim>
 class AdjointSimulation : public SimulationFacade<Dim> {
@@ -64,28 +67,21 @@ public:
      */
     void Run();
 
-    /// Per-source misfit values (populated after Run())
-    const std::vector<real_t>& SourceMisfits() const { return source_misfits_; }
-
-    /// Total misfit (sum over all sources)
-    real_t TotalMisfit() const {
-        real_t total = 0.0;
-        for (auto m : source_misfits_) total += m;
-        return total;
-    }
+    /// Misfit value for this shot (populated after Run())
+    real_t TotalMisfit() const { return total_misfit_; }
 
     /// Write summary to file (extends base class with Revolve checkpointing info)
     void WriteSummaryToFile(const std::string& filepath, const TimingInfo& timing);
 
 private:
-    // Per-source FWI workflow
-    void RunOneSource(int source_idx, const std::string& kernel_dir);
+    // Single-shot FWI workflow (all sources fire simultaneously)
+    void RunOneShot(const std::string& kernel_dir);
 
     // misfit_only: forward sweep + misfit computation only
-    void RunMisfitOnly(int source_idx, const std::string& kernel_dir);
+    void RunMisfitOnly(const std::string& kernel_dir);
 
     // Revolve-controlled forward + adjoint computation (records receivers during first pass)
-    void RevolveAdjoint(int source_idx, const std::string& kernel_dir);
+    void RevolveAdjoint(const std::string& kernel_dir);
 
     // Forward stepping (with optional receiver recording)
     void AdvanceForward(int from_step, int to_step,
@@ -131,10 +127,11 @@ private:
     int current_forward_step_ = 0;
     int adjoint_step_ = 0;
 
-    // Misfit values per source. source_l2_misfits_ is the diagnostic L2
-    // sidecar (see AdjointSource::L2MisfitValue), never used for adjoint.
-    std::vector<real_t> source_misfits_;
-    std::vector<real_t> source_l2_misfits_;
+    // Per-shot misfit (all sources superposed). total_l2_misfit_ is the
+    // diagnostic L2 sidecar (see AdjointSource::L2MisfitValue), never used
+    // for adjoint.
+    real_t total_misfit_ = 0.0;
+    real_t total_l2_misfit_ = 0.0;
 
     // Mode flag
     bool misfit_only_ = false;
@@ -150,7 +147,7 @@ private:
     double t_snapshot_        = 0.0;   // forward state snapshot per YouTurn
     double t_io_kernel_       = 0.0;   // kernel BP + Hessian write
     double t_io_synthetic_    = 0.0;   // synthetic HDF5 write
-    double t_io_misfit_       = 0.0;   // misfit_src{N}.txt ASCII write
+    double t_io_misfit_       = 0.0;   // misfit_shot{N}.txt ASCII write
 
     // Per-phase counters
     int n_forward_steps_      = 0;     // first-pass forward step count

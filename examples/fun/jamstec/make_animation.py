@@ -177,7 +177,7 @@ def main():
             import yaml
             with open("config.yaml") as f:
                 cfg = yaml.safe_load(f)
-            dt = cfg["simulation"]["time"]["dt"]
+            dt = cfg["simulation"]["dt"]
             print(f"  dt from config.yaml: {dt}")
         except Exception:
             # Estimate from snapshot spacing

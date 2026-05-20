@@ -77,13 +77,11 @@ def setup_workspace(tmp_path_factory, gmsh_available) -> Path:
         simulation:
           dimension: 3
           order: 2
-          time:
-            dt: 0.001
-            steps: 1
-            cfl_factor: 0.3
-          output:
-            directory: "./out"
-            log_interval: 100
+          dt: 0.001
+          steps: 1
+          cfl_factor: 0.3
+          directory: "./out"
+          log_interval: 100
         mesh:
           type: external
           file: {mesh_file.name}
@@ -106,14 +104,11 @@ def setup_workspace(tmp_path_factory, gmsh_available) -> Path:
             rho: 2500.0
         boundary:
           absorbing:
-            type: cerjan
             sides: []
             thickness: 0.0
             alpha: 0.0
-          dirichlet:
-            attributes: []
+          dirichlet: []
         sources:
-          mode: simultaneous
           list:
             - id: 1
               name: "fluid-pressure"
@@ -127,7 +122,7 @@ def setup_workspace(tmp_path_factory, gmsh_available) -> Path:
         receivers:
           output:
             formats:
-              - type: ascii
+              - ascii
             filename: "rcv"
           type: [PS]
           list:

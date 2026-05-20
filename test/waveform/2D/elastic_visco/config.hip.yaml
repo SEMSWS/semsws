@@ -1,121 +1,93 @@
-
-name: "elastic 2d with visco"
-
-# -----------------------------------------------------------------------------
-# Simulation Parameters
-# -----------------------------------------------------------------------------
+name: elastic 2d with visco
 simulation:
   dimension: 2
-  order: 4               # Polynomial order (GLL points = order + 1 = 5)
-
-  time:
-    steps: 10000         # Number of time steps
-    dt: 0.0001           # Time step (s) -> total time = 1.0 s
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 200
-    wavefield:
-      enabled: false
-      interval: 1000
-      formats:
-        - type: glvis
-
-# -----------------------------------------------------------------------------
-# Mesh Configuration
-# -----------------------------------------------------------------------------
-# Domain: 4000m x 2000m (wide enough for surface waves)
-# Source at (700, 1000) near center of top surface
-# Receivers along top surface from source to right edge
+  order: 4
+  steps: 10000
+  dt: 0.0001
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 200
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0]
-  size: [4000.0, 2000.0]    # Width x Depth
-  elements: [200, 100]      # 20m x 20m elements
+  origin:
+  - 0.0
+  - 0.0
+  size:
+  - 4000.0
+  - 2000.0
+  elements:
+  - 200
+  - 100
   max_freq: 50.0
   ppw: 5.0
-
-# -----------------------------------------------------------------------------
-# Material Properties
-# -----------------------------------------------------------------------------
-# Homogeneous elastic medium with Poisson's ratio ~ 0.25
 material:
   type: isotropic_elastic
   format: constant
-  vp: 3000.0              # P-wave velocity (m/s)
-  vs: 1732.0              # S-wave velocity (m/s) -> nu ~ 0.25
-  rho: 2500.0             # Density (kg/m^3)
-
+  vp: 3000.0
+  vs: 1732.0
+  rho: 2500.0
   attenuation:
     enabled: true
     f0: 10.0
     n_units: 3
-    Qkappa:  10
-    Qmu: 10
-
-# -----------------------------------------------------------------------------
-# Boundary Conditions
-# -----------------------------------------------------------------------------
-# Free surface at top (y = 2000m) - default, no ABC
-# Absorbing boundaries on left, right, bottom
+    qkappa: 10
+    qmu: 10
 boundary:
   absorbing:
-    type: cerjan
-    sides: [] #[left, right, bottom]
-    thickness: 500.0      # Sponge layer thickness (m)
-    alpha: 6              # Cerjan decay percentage
-
-  dirichlet:
-    attributes: []
-
-# -----------------------------------------------------------------------------
-# Sources
-# -----------------------------------------------------------------------------
-# Vertical force at center of top surface
+    sides: []
+    thickness: 500.0
+    alpha: 6
+  dirichlet: []
 sources:
-  mode: sequential
-
+  shot_id: 1
   list:
-    - id: 1
-      name: "Source 1"
-      type: force
-      location: [700.0, 1999.0]   # Near center of top surface
-      direction: [0.0, -1.0]      # Vertical force (downward)
-      wavelet:
-        type: ricker
-        frequency: 20.0           # Dominant frequency (Hz)
-        delay: 0.1                # Time delay (s)
-        amplitude: 1.0e9          # Force amplitude (N)
-
-# -----------------------------------------------------------------------------
-# Receivers
-# -----------------------------------------------------------------------------
-# Line of receivers along top surface from source to right edge
+  - type: force
+    location:
+    - 700.0
+    - 1999.0
+    direction:
+    - 0.0
+    - -1.0
+    wavelet:
+      type: ricker
+      frequency: 20.0
+      delay: 0.1
+      amplitude: 1.0e9
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "lamb_seismograms.h5"
-
-  type: [DISP]
-
+    - ascii
+    filename: lamb_seismograms.h5
+    buffer_steps: 100
+  type:
+  - DISP
   list:
-    - name: "REC00"
-      location: [800.0, 1000.0]
-    - name: "REC01"
-      location: [900.0, 1000.0]
-    - name: "REC02"
-      location: [1000.0, 1000.0]
-    - name: "REC03"
-      location: [1100.0, 1000.0]
-    - name: "REC04"
-      location: [1200.0, 1000.0]
-
-# -----------------------------------------------------------------------------
-# Device Configuration
-# -----------------------------------------------------------------------------
+  - name: REC00
+    location:
+    - 800.0
+    - 1000.0
+  - name: REC01
+    location:
+    - 900.0
+    - 1000.0
+  - name: REC02
+    location:
+    - 1000.0
+    - 1000.0
+  - name: REC03
+    location:
+    - 1100.0
+    - 1000.0
+  - name: REC04
+    location:
+    - 1200.0
+    - 1000.0
 device:
   type: hip
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    enabled: false
+    interval: 1000
+    formats:
+    - glvis

@@ -363,7 +363,7 @@ public:
     }
 
     int LogInterval() const {
-        return config_ ? config_->GetLogInterval() : 100;
+        return config_ ? config_->GetLogInterval() : 99999;
     }
 
     bool IsWavefieldOutputEnabled() const {
@@ -400,10 +400,6 @@ public:
             return outdir + summary;
         }
         return summary;
-    }
-
-    std::string SourceMode() const {
-        return config_ ? config_->GetSourceMode() : "simultaneous";
     }
 
     int NumSources() const {

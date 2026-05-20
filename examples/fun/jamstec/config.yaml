@@ -1,62 +1,18 @@
-# =============================================================================
-# JAMSTEC Text Mesh - 2D Acoustic Forward Simulation
-# =============================================================================
-# Source at "j-dot" position. Dirichlet BC on letter boundaries.
-# Run forward, then reverse snapshots for backward-in-time animation.
-
-name: "JAMSTEC Acoustic 2D"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
+name: JAMSTEC Acoustic 2D
 simulation:
   dimension: 2
   order: 8
-
-  time:
-    steps: 400000
-    dt: 0.00002
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 100
-
-    # ----- Wavefield snapshot output -----
-    wavefield:
-      enabled: true
-      interval: 100
-      fields: ["PS"]
-      formats:
-        - type: "paraview"
-          refinement: 2
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [700, 200]
-          component: -1
-
-    # ----- Material output -----
-    material:
-      enabled: true
-      fields: ["vp", "rho"]
-      formats:
-        - type: "paraview"
-          refinement: 2
-          data_format: "binary32"
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
+  steps: 400000
+  dt: 2.0e-05
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 100
+  summary_file: summary.txt
 mesh:
   type: external
   file: jamstec.msh
   max_freq: 28
   ppw: 5.0
-
-# =============================================================================
-# Material Properties
-# =============================================================================
 material:
   type: isotropic_acoustic
   format: constant
@@ -64,63 +20,84 @@ material:
   rho: 1000.0
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
 boundary:
   absorbing:
-    type: cerjan
-    sides: [] #[bottom, right,  left]
+    sides: []
     thickness: 800.0
     alpha: 0.4
-
   free_surface:
     sides: []
-
   dirichlet:
-    attributes: ["top", "bottom", "left", "right", "5", "6", "7", "8", "9", "10", "11"]
-
-# =============================================================================
-# Sources
-# =============================================================================
+  - top
+  - bottom
+  - left
+  - right
+  - '5'
+  - '6'
+  - '7'
+  - '8'
+  - '9'
+  - '10'
+  - '11'
 sources:
-  mode: simultaneous
-
   list:
-    - id: 1
-      name: "j-dot"
-      type: pressure
-      location: [2915.0, 2876.0]
-      wavelet:
-        type: ricker
-        frequency: 10
-        amplitude: 1.0e10
-        delay: 0.2
-
-# =============================================================================
-# Receivers
-# =============================================================================
+  - type: pressure
+    location:
+    - 2915.0
+    - 2876.0
+    wavelet:
+      type: ricker
+      frequency: 10
+      amplitude: 1.0e10
+      delay: 0.2
 receivers:
   output:
-    format: ascii
-    filename: "seismograms"
-
-  type: [PS]
-
+    formats:
+    - ascii
+    filename: seismograms
+  type:
+  - PS
   list:
-    - name: "R_top"
-      location: [7000.0, 3800.0]
-    - name: "R_bottom"
-      location: [7000.0, 200.0]
-    - name: "R_left"
-      location: [200.0, 2000.0]
-    - name: "R_right"
-      location: [13800.0, 3000.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
+  - name: R_top
+    location:
+    - 7000.0
+    - 3800.0
+  - name: R_bottom
+    location:
+    - 7000.0
+    - 200.0
+  - name: R_left
+    location:
+    - 200.0
+    - 2000.0
+  - name: R_right
+    location:
+    - 13800.0
+    - 3000.0
 device:
   type: cpu
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    components:
+    - -1
+    enabled: true
+    interval: 100
+    fields:
+    - PS
+    formats:
+    - type: paraview
+      refinement: 2
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 700
+      - 200
+  material:
+    enabled: true
+    fields:
+    - vp
+    - rho
+    formats:
+    - type: paraview
+      refinement: 2
+      data_format: binary32

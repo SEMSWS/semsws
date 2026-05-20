@@ -1,16 +1,11 @@
-"""Verify HDF5 output naming reflects input shot_id (mode=simultaneous)
-and per-iteration source.id (mode=sequential).
+"""Verify HDF5 output naming reflects input shot_id.
 
 For each parametrised case, generates a synthetic v2.0 input HDF5 with a
 known shot_id and one or more sources, runs semsws, and asserts:
 
-  mode=simultaneous, input shot_id=N
-    → output file:    seis<N:04d>.h5
-    → internal:       /shots/<N:04d>/   with @shot_id = N
-
-  mode=sequential, input shot_id=N, M sources with ids [i_0, ..., i_{M-1}]
-    → M output files: seis<i_k:04d>.h5
-    → each internal:  /shots/<N:04d>/   with @shot_id = N
+  input shot_id=N, sources [i_0, ..., i_{M-1}]
+    → output file: seis<N:04d>.h5
+    → internal:    /shots/<N:04d>/   with @shot_id = N
 
 Usage:
     pytest test/consistency/test_hdf5_shot_id_naming.py --build-dir ./build -v
@@ -83,23 +78,21 @@ def _write_input_hdf5(path: Path, *, shot_id: int, source_ids: list[int],
 
 
 def _materialise_config(base: Path, dst: Path, *, outdir: Path,
-                        device: str, mode: str, h5_input: Path,
+                        device: str, h5_input: Path,
                         shot_id: int) -> None:
     """Strip the inline source/receiver lists from base config and point
     sources / receivers at the synthesized HDF5."""
     with open(base) as f:
         cfg = yaml.safe_load(f)
 
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
-    sim_out = cfg["simulation"].setdefault("output", {})
-    sim_out["directory"] = str(outdir)
-    if "wavefield" in sim_out:
-        sim_out["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
     cfg.setdefault("device", {})["type"] = device
 
     cfg["sources"] = {
-        "mode": mode,
-        "format": "hdf5",
         "file": str(h5_input),
         "shot_id": shot_id,
     }
@@ -107,11 +100,8 @@ def _materialise_config(base: Path, dst: Path, *, outdir: Path,
     parent_type = cfg["receivers"]["type"]
     cfg["receivers"] = {
         "type": parent_type,
-        "format": "hdf5",
-        "file": str(h5_input),
-        "shot_id": shot_id,
         "output": {
-            "formats": [{"type": "hdf5"}],
+            "formats": ["hdf5"],
             "filename": "seis",
         },
     }
@@ -180,9 +170,8 @@ def test_simultaneous_uses_shot_id_for_filename_and_internal(
     keep_results: bool,
     tmp_path_factory,
 ):
-    """mode=simultaneous: filename suffix = input shot_id; internal
-    /shots/<NNNN>/ also uses input shot_id; all sources merged into one
-    file."""
+    """Filename suffix = input shot_id; internal /shots/<NNNN>/ also uses
+    input shot_id; all sources fire together into one output file."""
     if not BASE_CONFIG.exists():
         pytest.skip(f"base config not found: {BASE_CONFIG}")
 
@@ -197,8 +186,7 @@ def test_simultaneous_uses_shot_id_for_filename_and_internal(
     outdir.mkdir()
     cfg = work / "config.yaml"
     _materialise_config(BASE_CONFIG, cfg, outdir=outdir, device=device_type,
-                        mode="simultaneous", h5_input=h5_input,
-                        shot_id=shot_id)
+                        h5_input=h5_input, shot_id=shot_id)
 
     ok, msg = _run(executable.resolve(), np_procs, cfg, mpi_cmd, cwd=work)
     assert ok, f"semsws run failed:\n{msg}"
@@ -219,53 +207,3 @@ def test_simultaneous_uses_shot_id_for_filename_and_internal(
         shutil.rmtree(work, ignore_errors=True)
 
 
-@pytest.mark.parametrize("shot_id,source_ids", [
-    (0,  [1, 2, 3]),
-    (42, [1, 5, 9]),
-])
-def test_sequential_uses_source_id_for_filename_shot_id_for_internal(
-    shot_id: int,
-    source_ids: list[int],
-    executable: Path,
-    np_procs: int,
-    device_type: str,
-    mpi_cmd: str,
-    keep_results: bool,
-    tmp_path_factory,
-):
-    """mode=sequential: M output files; each filename suffix = source.id;
-    each file's internal /shots/<NNNN>/ = input shot_id."""
-    if not BASE_CONFIG.exists():
-        pytest.skip(f"base config not found: {BASE_CONFIG}")
-
-    work = tmp_path_factory.mktemp(f"seq_shot{shot_id}")
-    h5_input = work / "input.h5"
-    _write_input_hdf5(h5_input, shot_id=shot_id, source_ids=source_ids,
-                      space_dim=2, dt=1.0e-3, n_samples=SHORT_STEPS,
-                      receiver_pos=(800.0, 200.0))
-
-    outdir = work / "out"
-    outdir.mkdir()
-    cfg = work / "config.yaml"
-    _materialise_config(BASE_CONFIG, cfg, outdir=outdir, device=device_type,
-                        mode="sequential", h5_input=h5_input,
-                        shot_id=shot_id)
-
-    ok, msg = _run(executable.resolve(), np_procs, cfg, mpi_cmd, cwd=work)
-    assert ok, f"semsws run failed:\n{msg}"
-
-    # M output files, one per source
-    actual = sorted(p.name for p in outdir.glob("seis*.h5"))
-    expected = sorted(f"seis{sid:04d}.h5" for sid in source_ids)
-    assert actual == expected, (
-        f"sequential output filenames mismatch.\n"
-        f"  expected: {expected}\n  actual:   {actual}"
-    )
-
-    # Each per-source file: internal /shots/<shot_id>/ with the lone source
-    for sid in source_ids:
-        path = outdir / f"seis{sid:04d}.h5"
-        _assert_h5_shot(path, shot_id, [sid])
-
-    if not keep_results:
-        shutil.rmtree(work, ignore_errors=True)

@@ -196,13 +196,13 @@ CoupledSimulationFacade<Dim>::SetupFromConfig()
                 << (int)solid_material_->GetDomainType()
                 << " — material.solid.type must be elastic");
 
-    // 4. Operators. Both sides share a single dt read from simulation.time
+    // 4. Operators. Both sides share a single dt read from simulation
     //    so the time loop stays aligned; the effective CFL is the min of
     //    the two sides.
     dt_ = config_->GetDt();
     nt_ = config_->GetNumSteps();
-    MFEM_VERIFY(dt_ > 0.0, "simulation.time.dt must be positive");
-    MFEM_VERIFY(nt_ > 0,   "simulation.time.steps must be positive");
+    MFEM_VERIFY(dt_ > 0.0, "simulation.dt must be positive");
+    MFEM_VERIFY(nt_ > 0,   "simulation.steps must be positive");
 
     // Dirichlet handling for the coupled case is non-trivial (Doc §5.2.2
     // reminder). Rules:
@@ -502,6 +502,16 @@ void CoupledSimulationFacade<Dim>::SetupReceiversFromConfig()
             fmt, config_->GetOutputDirectory(),
             config_->GetReceiverOutputFilename() + "_solid");
     }
+
+    // Dump per-side filtered receiver logs so users see what got dropped
+    // (e.g. fluid stations whose position lies in the solid submesh).
+    const std::string out_dir = config_->GetOutputDirectory();
+    if (fluid_receivers_ && fluid_receivers_->HasFilteredReceivers()) {
+        fluid_receivers_->SaveFilteredLog(out_dir + "/filtered_receivers_fluid.txt");
+    }
+    if (solid_receivers_ && solid_receivers_->HasFilteredReceivers()) {
+        solid_receivers_->SaveFilteredLog(out_dir + "/filtered_receivers_solid.txt");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +583,7 @@ void CoupledSimulationFacade<Dim>::DeviceInit()
 
         // 4. Receiver GPU recording buffers
         if (receivers) {
-            const int buffer_steps = config_ ? config_->GetSeismoBufferSteps() : 0;
+            const int buffer_steps = config_ ? config_->GetReceiverBufferSteps() : 0;
             receivers->DeviceInit(buffer_steps);
         }
     };
@@ -597,12 +607,12 @@ bool CoupledSimulationFacade<Dim>::Step()
     // Record both sides at the current step BEFORE integration (matches
     // SimulationFacade<Dim>::Step), so the first sample is the zero
     // initial state and recorded index == runner step index.
-    const int seismo_buf = config_ ? config_->GetSeismoBufferSteps() : 0;
+    const int buffer_steps = config_ ? config_->GetReceiverBufferSteps() : 0;
     if (fluid_receivers_) {
-        fluid_receivers_->Record(fluid_runner_.CurrentStep(), seismo_buf);
+        fluid_receivers_->Record(fluid_runner_.CurrentStep(), buffer_steps);
     }
     if (solid_receivers_) {
-        solid_receivers_->Record(solid_runner_.CurrentStep(), seismo_buf);
+        solid_receivers_->Record(solid_runner_.CurrentStep(), buffer_steps);
     }
 
     // Coupling-disabled fallback: no interface found or explicitly turned off → each
@@ -1186,10 +1196,8 @@ void CoupledSimulationFacade<Dim>::SaveReceivers()
 
     // Mirror ForwardSimulation::Run — first source on whichever side owns
     // one provides the id / position used as the filename + SU header
-    // metadata for BOTH receiver arrays. In the simultaneous single-shot
-    // case this is the only source and the pair (id, position) is
-    // unambiguous; for sequential multi-shot we'd route through
-    // RunSequential (not yet implemented on the coupled path).
+    // metadata for BOTH receiver arrays. All sources fire simultaneously
+    // within the single shot, so the pair (id, position) is unambiguous.
     int id = 0;
     const Vector* pos = nullptr;
     if (solid_sources_ && solid_sources_->NumSources() > 0) {

@@ -33,7 +33,7 @@ def _make_template(binary: Path) -> dict:
     return {
         "name": "smoke",
         "simulation": {"dim": 2, "order": 4, "mode": "forward",
-                       "time": {"steps": 4, "dt": 1e-3}},
+                       "steps": 4, "dt": 1e-3},
         "mesh": {"type": "internal", "dim": 2,
                  "origin": [0.0, 0.0], "size": [100.0, 100.0],
                  "elements": [4, 4]},

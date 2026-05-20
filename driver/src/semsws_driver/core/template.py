@@ -66,25 +66,17 @@ def render_shot_yaml(
     # Source / receiver inputs come from the bundled HDF5.
     inputs_str = str(inputs_h5)
     cfg["sources"] = {
-        # F1: HDF5-driven runs always use simultaneous superposition; the
-        # one-shot-one-event semantics is encoded in the file layout, not
-        # in YAML knobs (driver auto-fills `mode` so user does not).
-        "mode": "simultaneous",
-        "format": "hdf5",
         "file": inputs_str,
         "shot_id": int(shot_id),
     }
-    rcv = {
-        "format": "hdf5",
-        "file": inputs_str,
-        "shot_id": int(shot_id),
-    }
-    # Preserve user's `receivers.type` if present; force HDF5 output format.
+    rcv = {}
+    # Preserve user's `receivers.type` if present; receivers geometry comes
+    # from sources.file (same HDF5 bundle) automatically.
     user_rcv = template.get("receivers") or {}
     if isinstance(user_rcv, dict) and "type" in user_rcv:
         rcv["type"] = user_rcv["type"]
     rcv["output"] = {
-        "formats": [{"type": "hdf5"}],
+        "formats": ["hdf5"],
         "filename": "seismograms",
     }
     cfg["receivers"] = rcv
@@ -94,12 +86,11 @@ def render_shot_yaml(
     if material_override is not None:
         cfg["material"] = copy.deepcopy(material_override)
 
-    # SEMSWS validates simulation.output.directory; driver knows the per-shot
+    # SEMSWS validates simulation.directory; driver knows the per-shot
     # workdir so we auto-fill it. User overrides anything they explicitly set.
     if output_directory is not None:
         sim = cfg.setdefault("simulation", {})
-        out = sim.setdefault("output", {})
-        out.setdefault("directory", str(output_directory))
+        sim.setdefault("directory", str(output_directory))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w") as f:

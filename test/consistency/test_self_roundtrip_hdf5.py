@@ -82,17 +82,17 @@ def _materialise_yaml_a(src: Path, dst: Path, outdir: Path,
     """Run-(a) config: original sources / receivers; HDF5 + ASCII output."""
     with open(src) as f:
         cfg = yaml.safe_load(f)
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
-    sim_out = cfg["simulation"].setdefault("output", {})
-    sim_out["directory"] = str(outdir)
-    if "wavefield" in sim_out:
-        sim_out["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
     cfg.setdefault("device", {})["type"] = device
 
     # Emit BOTH ascii (for trace comparison) and hdf5 (for self-roundtrip).
     cfg["receivers"]["output"]["formats"] = [
-        {"type": "ascii"},
-        {"type": "hdf5"},
+        "ascii",
+        "hdf5",
     ]
     cfg["receivers"]["output"]["filename"] = base_filename
 
@@ -105,34 +105,26 @@ def _materialise_yaml_b(src: Path, dst: Path, outdir: Path,
     """Run-(b) config: read sources + receivers from the run-(a) HDF5."""
     with open(src) as f:
         cfg = yaml.safe_load(f)
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
-    sim_out = cfg["simulation"].setdefault("output", {})
-    sim_out["directory"] = str(outdir)
-    if "wavefield" in sim_out:
-        sim_out["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
     cfg.setdefault("device", {})["type"] = device
 
-    # Replace sources to read from HDF5. Preserve original mode and
-    # shot_id so that the HDF5 input's /shots/<NNNN>/ key matches
-    # (the run-(a) output uses the original shot_id internally).
-    orig_mode = cfg["sources"].get("mode", "sequential")
+    # Replace sources to read from HDF5. Preserve original shot_id so the
+    # HDF5 input's /shots/<NNNN>/ key matches.
     orig_shot_id = cfg["sources"].get("shot_id", 0)
     cfg["sources"] = {
-        "mode": orig_mode,
-        "format": "hdf5",
         "file": str(h5_input),
         "shot_id": orig_shot_id,
     }
-    # Replace receivers to read from HDF5 (geometry-only). Keep parent
-    # `type:` from the original config.
+    # Receivers geometry auto-inherits from sources.file (HDF5 bundle).
     parent_type = cfg["receivers"]["type"]
     cfg["receivers"] = {
         "type": parent_type,
-        "format": "hdf5",
-        "file": str(h5_input),
-        "shot_id": orig_shot_id,
         "output": {
-            "formats": [{"type": "ascii"}],
+            "formats": ["ascii"],
             "filename": "dummy_b",
         },
     }
@@ -166,15 +158,10 @@ def test_self_roundtrip(
     ok, msg = _run(executable.resolve(), np_procs, cfg_a, mpi_cmd, cwd=work)
     assert ok, f"{case_id}: run-(a) failed:\n{msg}"
 
-    # The per-shot HDF5 emitted by run (a). Filename suffix depends on
-    # mode: simultaneous uses input shot_id (default 0), sequential uses
-    # source.id (which is 1 in every test config we're parametrising).
+    # The per-shot HDF5 emitted by run (a). Suffix = shot_id (default 0).
     with open(config_path) as f_cfg:
         _src_cfg = yaml.safe_load(f_cfg).get("sources", {})
-    if _src_cfg.get("mode", "sequential") == "simultaneous":
-        suffix = _src_cfg.get("shot_id", 0)
-    else:
-        suffix = 1
+    suffix = _src_cfg.get("shot_id", 0)
     h5_input = out_a / f"seis{suffix:04d}.h5"
     assert h5_input.exists(), f"{case_id}: missing per-shot HDF5 {h5_input}"
 

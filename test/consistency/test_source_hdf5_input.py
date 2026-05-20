@@ -3,7 +3,7 @@
 Generates a reproducible STF sample sequence and runs the same waveform
 config twice:
   (a) wavelet.type=external, reading the STF from an ASCII 2-column file,
-  (b) sources.format=hdf5, reading the STF from /shots/<id>/sources/S0001/stf.
+  (b) sources.file=<bundle.h5>, reading the STF from /shots/<id>/sources/S0001/stf.
 
 The two runs must produce bit-exact ASCII receiver traces because both
 paths feed the same numerical samples — no wavelet formula is re-computed.
@@ -117,15 +117,15 @@ def _materialise_yaml(src: Path, dst: Path, outdir: Path, device: str,
     with open(src) as f:
         cfg = yaml.safe_load(f)
 
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
-    sim_out = cfg["simulation"].setdefault("output", {})
-    sim_out["directory"] = str(outdir)
-    if "wavefield" in sim_out:
-        sim_out["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
 
     cfg.setdefault("device", {})["type"] = device
 
-    cfg["receivers"]["output"]["formats"] = [{"type": "ascii"}]
+    cfg["receivers"]["output"]["formats"] = ["ascii"]
     cfg["receivers"]["output"]["filename"] = "dummy"
 
     # Replace sources section wholesale.
@@ -152,7 +152,7 @@ def test_hdf5_source_input_matches_external_ascii(
 
     src = yaml.safe_load(config_path.read_text())
     space_dim = int(src["simulation"]["dimension"])
-    dt = float(src["simulation"]["time"]["dt"])
+    dt = float(src["simulation"]["dt"])
     inline_src = src["sources"]["list"][0]
 
     # Generate STF samples — Ricker matches the YAML's wavelet so the
@@ -173,7 +173,6 @@ def test_hdf5_source_input_matches_external_ascii(
     out_a = work / "results_ascii"; out_a.mkdir()
     cfg_a = work / "config_ascii.yaml"
     src_section_a = {
-        "mode": src["sources"].get("mode", "sequential"),
         "list": [{
             **inline_src,
             "wavelet": {
@@ -195,8 +194,6 @@ def test_hdf5_source_input_matches_external_ascii(
     out_b = work / "results_h5"; out_b.mkdir()
     cfg_b = work / "config_h5.yaml"
     src_section_b = {
-        "mode": src["sources"].get("mode", "sequential"),
-        "format": "hdf5",
         "file": str(h5_path),
         "shot_id": 0,
     }
@@ -205,8 +202,8 @@ def test_hdf5_source_input_matches_external_ascii(
     assert ok, f"{case_id}: HDF5 source run failed:\n{msg}"
 
     # --- Compare ASCII traces (bit-exact) -----------------------------------
-    a_traces = _read_all_ascii(out_a, "0001")
-    b_traces = _read_all_ascii(out_b, "0001")
+    a_traces = _read_all_ascii(out_a, "0000")
+    b_traces = _read_all_ascii(out_b, "0000")
     assert a_traces, f"{case_id}: no ASCII output from external-stf run"
     assert a_traces.keys() == b_traces.keys(), (
         f"{case_id}: trace filename sets differ\n"

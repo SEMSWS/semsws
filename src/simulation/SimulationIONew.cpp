@@ -43,9 +43,9 @@ void SimulationIO<Dim>::SetReceivers(ReceiverArray* receivers) {
 }
 
 template<int Dim>
-void SimulationIO<Dim>::RecordReceivers(int step, int seismo_buffer_steps) {
+void SimulationIO<Dim>::RecordReceivers(int step, int buffer_steps) {
     if (receivers_) {
-        receivers_->Record(step, seismo_buffer_steps);
+        receivers_->Record(step, buffer_steps);
     }
 }
 

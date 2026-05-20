@@ -85,9 +85,9 @@ public:
     /**
      * @brief Record receivers at current step
      * @param step Current time step
-     * @param seismo_buffer_steps GPU buffer size (0 = all steps)
+     * @param buffer_steps GPU buffer size (0 = all steps)
      */
-    void RecordReceivers(int step, int seismo_buffer_steps = 0);
+    void RecordReceivers(int step, int buffer_steps = 0);
 
     // -------------------------------------------------------------------------
     // Wavefield Output

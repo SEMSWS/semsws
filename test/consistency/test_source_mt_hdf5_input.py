@@ -3,7 +3,7 @@ HDF5 moment-tensor source-input consistency test (Stage 4).
 
 Runs the same waveform config twice with a moment_tensor source:
   (a) inline YAML  : `sources.list[0].type=moment_tensor` + `wavelet.type=ricker`
-  (b) HDF5 source  : `sources.format=hdf5` pointing at a v2.0 file with
+  (b) HDF5 source  : `sources.file=<bundle.h5>` pointing at a v2.0 file with
                      `/shots/0/sources/S0001/moment_tensor` + `/stf` scalar.
 
 The Python writer generates the Ricker STF samples that the C++ Ricker
@@ -147,15 +147,15 @@ def _materialise_yaml(src: Path, dst: Path, outdir: Path, device: str,
     with open(src) as f:
         cfg = yaml.safe_load(f)
 
-    cfg.setdefault("simulation", {}).setdefault("time", {})["steps"] = SHORT_STEPS
-    sim_out = cfg["simulation"].setdefault("output", {})
-    sim_out["directory"] = str(outdir)
-    if "wavefield" in sim_out:
-        sim_out["wavefield"]["enabled"] = False
+    cfg.setdefault("simulation", {})["steps"] = SHORT_STEPS
+    cfg["simulation"]["directory"] = str(outdir)
+    vis = cfg.get("vis") or {}
+    if "wavefield" in vis:
+        vis["wavefield"]["enabled"] = False
 
     cfg.setdefault("device", {})["type"] = device
 
-    cfg["receivers"]["output"]["formats"] = [{"type": "ascii"}]
+    cfg["receivers"]["output"]["formats"] = ["ascii"]
     cfg["receivers"]["output"]["filename"] = "dummy"
 
     cfg["sources"] = source_section
@@ -175,9 +175,9 @@ def _build_inline_mt_section(base_src_section: dict,
     base["moment_tensor"] = {k: float(v) for k, v in mt_components.items()}
     if wavelet_overrides:
         base["wavelet"] = {**base.get("wavelet", {}), **wavelet_overrides}
-    # `direction` is irrelevant for MT but the existing field is harmless.
+    # Strict validator (B7) rejects `direction` on moment_tensor sources.
+    base.pop("direction", None)
     return {
-        "mode": base_src_section.get("mode", "sequential"),
         "list": [base],
     }
 
@@ -200,7 +200,7 @@ def test_hdf5_mt_input_matches_yaml(
 
     src = yaml.safe_load(config_path.read_text())
     space_dim = int(src["simulation"]["dimension"])
-    dt = float(src["simulation"]["time"]["dt"])
+    dt = float(src["simulation"]["dt"])
     inline_src = src["sources"]["list"][0]
     wv = inline_src["wavelet"]
 
@@ -230,8 +230,6 @@ def test_hdf5_mt_input_matches_yaml(
     out_b = work / "results_h5"; out_b.mkdir()
     cfg_b = work / "config_h5.yaml"
     src_section_b = {
-        "mode": src["sources"].get("mode", "sequential"),
-        "format": "hdf5",
         "file": str(h5_path),
         "shot_id": 0,
     }
@@ -240,14 +238,8 @@ def test_hdf5_mt_input_matches_yaml(
     assert ok, f"{case_id}: HDF5 MT run failed:\n{msg}"
 
     # --- Compare ASCII traces ------------------------------------------------
-    # Filename suffix depends on mode: simultaneous uses input shot_id
-    # (default 0), sequential uses source.id (=1 in test configs).
-    with open(config_path) as _f_cfg:
-        _src_cfg = yaml.safe_load(_f_cfg).get("sources", {})
-    if _src_cfg.get("mode", "sequential") == "simultaneous":
-        suffix_str = f"{_src_cfg.get('shot_id', 0):04d}"
-    else:
-        suffix_str = "0001"
+    # Both (a) and (b) use shot_id=0 (defaults / explicit) → suffix "0000".
+    suffix_str = "0000"
     a_traces = _read_all_ascii(out_a, suffix_str)
     b_traces = _read_all_ascii(out_b, suffix_str)
     assert a_traces, f"{case_id}: no ASCII output from YAML MT run"

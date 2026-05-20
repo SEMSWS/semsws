@@ -39,8 +39,9 @@ using namespace mfem;
  * The format determines where the data comes from:
  * - "constant": Values directly in YAML
  * - "grid": Values from structured grid ASCII file
- * - "hdf5": Values from HDF5 file
  * - "by_attribute": Per-region values (from YAML or file)
+ * - "by_attribute_mixed": Per-region values from external mix YAML
+ * - "adios2": Pre-computed GLL data from .bp files
  */
 /**
  * @brief Attenuation configuration from YAML
@@ -60,7 +61,7 @@ struct MaterialConfig {
     /// Determines how parameters are interpreted
     std::string material_type = "isotropic_elastic";
 
-    /// Format: "constant", "grid", "hdf5", "by_attribute", "by_attribute_mixed"
+    /// Format: "constant", "grid", "by_attribute", "by_attribute_mixed", "adios2"
     /// Determines where parameters come from
     std::string format;
 
@@ -74,16 +75,10 @@ struct MaterialConfig {
     // ===== Attenuation (optional, applies to all formats) =====
     AttenuationConfig attenuation;
 
-    // ===== format="grid" or "hdf5" =====
+    // ===== format="grid" =====
     /// Path to material file (contains all properties for material_type)
     /// File format interpretation depends on material_type
     std::string material_file;
-
-    // ===== format="hdf5" specific =====
-    std::string hdf5_file;        ///< HDF5 file path (if different from material_file)
-    std::string dataset_vp;       ///< Dataset path for Vp
-    std::string dataset_vs;       ///< Dataset path for Vs
-    std::string dataset_rho;      ///< Dataset path for density
 
     // ===== format="by_attribute" =====
     /// File containing attribute-material mapping
@@ -164,7 +159,7 @@ namespace SourceConfig {
 
 /// Common wavelet/STF parameters
 struct WaveletConfig {
-    std::string type = "ricker";   ///< "ricker", "gaussian", "external", "hdf5"
+    std::string type = "ricker";   ///< "ricker", "gaussian", "external"
     real_t frequency = 0.0;        ///< Dominant frequency [Hz]
     real_t amplitude = 1.0;        ///< Amplitude scaling
     real_t delay = 0.0;            ///< Time delay [s]

@@ -102,13 +102,11 @@ def _write_yaml(yaml_path: Path, mesh_name: str,
         simulation:
           dimension: 3
           order: 2
-          time:
-            dt: {DT}
-            steps: {NT}
-            cfl_factor: 0.3
-          output:
-            directory: "./out"
-            log_interval: 100000
+          dt: {DT}
+          steps: {NT}
+          cfl_factor: 0.3
+          directory: "./out"
+          log_interval: 100000
         mesh:
           type: external
           file: {mesh_name}
@@ -131,20 +129,17 @@ def _write_yaml(yaml_path: Path, mesh_name: str,
             rho: {RHO_SOLID}
         boundary:
           absorbing:
-            type: cerjan
             sides: []
             thickness: 0.0
             alpha: 0.0
-          dirichlet:
-            attributes: []
+          dirichlet: []
         sources:
-          mode: simultaneous
           list:
 """) + sources_list + textwrap.dedent(f"""
         receivers:
           output:
             formats:
-              - type: ascii
+              - ascii
             filename: "rcv"
           type: [PS]
           list:

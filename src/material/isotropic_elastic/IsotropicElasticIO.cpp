@@ -119,6 +119,13 @@ bool ReadIsotropicElasticMaterialData2D(const std::string& filename,
                   << " (got " << ncols << ")" << std::endl;
         return false;
     }
+    if (ncols > required_cols) {
+        std::cerr << "[WARN] " << filename << " has " << ncols
+                  << " columns but only " << required_cols
+                  << " will be used (extra columns ignored). "
+                  << "Enable material.attenuation if the extras are Qkappa/Qmu."
+                  << std::endl;
+    }
     mat.has_Q = read_Q;
 
     // Allocate vectors
@@ -232,6 +239,13 @@ bool ReadIsotropicElasticMaterialData3D(const std::string& filename,
                   << " columns in: " << filename
                   << " (got " << ncols << ")" << std::endl;
         return false;
+    }
+    if (ncols > required_cols) {
+        std::cerr << "[WARN] " << filename << " has " << ncols
+                  << " columns but only " << required_cols
+                  << " will be used (extra columns ignored). "
+                  << "Enable material.attenuation if the extras are Qkappa/Qmu."
+                  << std::endl;
     }
     mat.has_Q = read_Q;
 

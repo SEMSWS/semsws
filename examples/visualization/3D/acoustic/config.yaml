@@ -1,78 +1,29 @@
-# =============================================================================
-# Visualization Test - 3D Acoustic
-# =============================================================================
-# Tests all visualization output formats in 3D: ParaView, GMT cross-sections, GLVis.
-# Based on test/waveform/3D/acoustic_analytic/config.yaml.
-# Smaller mesh (20x20x18) and fewer steps (200) for quick testing.
-
-name: "Visualization Test - 3D Acoustic"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
+name: Visualization Test - 3D Acoustic
 simulation:
   dimension: 3
   order: 4
-
-  time:
-    dt: 0.005
-    steps: 1200
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 100
-
-    # ----- Wavefield output (all formats) -----
-    wavefield:
-      enabled: true
-      interval: 100
-      fields: ["PS"]
-      formats:
-        - type: "glvis"
-        - type: "paraview"
-          refinement: 4
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [100, 100]
-          component: -1
-          cross_sections:
-            yz: [12000.0]
-            xz: [12000.0]
-            xy: [12000.0]
-
-    # ----- Material output (all formats) -----
-    material:
-      enabled: true
-      fields: ["vp", "rho"]
-      formats:
-        - type: "glvis"
-        - type: "paraview"
-          refinement: 4
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [100, 100]
-          cross_sections:
-            yz: [12000.0]
-            xz: [12000.0]
-            xy: [12000.0]
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
+  dt: 0.005
+  steps: 1200
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 100
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0, 0.0]
-  size: [24000.0, 24000.0, 20000.0]
-  elements: [20, 20, 18]
-  save: true
+  origin:
+  - 0.0
+  - 0.0
+  - 0.0
+  size:
+  - 24000.0
+  - 24000.0
+  - 20000.0
+  elements:
+  - 20
+  - 20
+  - 18
   max_freq: 2.5
   ppw: 5.0
-
-# =============================================================================
-# Material Properties
-# =============================================================================
 material:
   type: isotropic_acoustic
   format: constant
@@ -80,58 +31,99 @@ material:
   rho: 2300.0
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
 boundary:
   absorbing:
-    type: cerjan
-    sides: [bottom, right, left, front, back, top]
+    sides:
+    - bottom
+    - right
+    - left
+    - front
+    - back
+    - top
     thickness: 1200.0
     alpha: 0.3
-
-  dirichlet:
-    attributes: []
-
-# =============================================================================
-# Sources
-# =============================================================================
+  dirichlet: []
 sources:
-  mode: simultaneous
-
   list:
-    - id: 1
-      name: "Acoustic Point Source"
-      type: pressure
-      location: [12000.0, 12000.0, 12000.0]
-      wavelet:
-        type: ricker
-        frequency: 1.0
-        delay: 1.5
-        amplitude: 1.0e10
-
-# =============================================================================
-# Receivers
-# =============================================================================
+  - type: pressure
+    location:
+    - 12000.0
+    - 12000.0
+    - 12000.0
+    wavelet:
+      type: ricker
+      frequency: 1.0
+      delay: 1.5
+      amplitude: 1.0e10
 receivers:
   output:
-    format: ascii
-    filename: "seismograms"
-
-  type: [PS]
-
+    formats:
+    - ascii
+    filename: seismograms
+  type:
+  - PS
   list:
-    - name: "R1"
-      location: [15000.0, 13000.0, 8000.0]
-    - name: "R2"
-      location: [13000.0, 15000.0, 8000.0]
-    - name: "R3"
-      location: [18000.0, 13000.0, 8000.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
+  - name: R1
+    location:
+    - 15000.0
+    - 13000.0
+    - 8000.0
+  - name: R2
+    location:
+    - 13000.0
+    - 15000.0
+    - 8000.0
+  - name: R3
+    location:
+    - 18000.0
+    - 13000.0
+    - 8000.0
 device:
   type: cpu
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    components:
+    - -1
+    enabled: true
+    interval: 100
+    fields:
+    - PS
+    formats:
+    - glvis
+    - type: paraview
+      refinement: 4
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 100
+      - 100
+      cross_sections:
+        yz:
+        - 12000.0
+        xz:
+        - 12000.0
+        xy:
+        - 12000.0
+  material:
+    enabled: true
+    fields:
+    - vp
+    - rho
+    formats:
+    - glvis
+    - type: paraview
+      refinement: 4
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 100
+      - 100
+      cross_sections:
+        yz:
+        - 12000.0
+        xz:
+        - 12000.0
+        xy:
+        - 12000.0
+  mesh:
+    enabled: true

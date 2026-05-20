@@ -1,16 +1,9 @@
 name: example_lumi_gpu
-description: |
-  3D elastic forward run on LUMI-G (4 GPU per shot, 4 shots in parallel).
-  Companion job script:
-
-    #!/bin/bash
-    #SBATCH --account=project_xxx
-    #SBATCH --partition=standard-g
-    #SBATCH --nodes=4
-    #SBATCH --gpus-per-node=4
-    #SBATCH --time=08:00:00
-    semsws-driver run --config this.yaml --inputs ../obs.h5 --workdir ./work --merge
-
+description: "3D elastic forward run on LUMI-G (4 GPU per shot, 4 shots in parallel).\n\
+  Companion job script:\n\n  #!/bin/bash\n  #SBATCH --account=project_xxx\n  #SBATCH\
+  \ --partition=standard-g\n  #SBATCH --nodes=4\n  #SBATCH --gpus-per-node=4\n  #SBATCH\
+  \ --time=08:00:00\n  semsws-driver run --config this.yaml --inputs ../obs.h5 --workdir\
+  \ ./work --merge\n"
 simulation:
   dimension: 3
   order: 4
@@ -19,54 +12,61 @@ simulation:
     steps: 4000
     dt: 0.001
     cfl_factor: 0.5
-  output:
-    log_interval: 500
-    wavefield: { enabled: false }
-
+  log_interval: 500
 mesh:
-  type: external           # driver auto-runs partition_mesh into _shared_mesh/
+  type: external
   file: /scratch/proj/mesh.msh
-  partition: cartesian
-  partition_grid: [1, 2, 2]
+  partition_method: cartesian
+  partition_grid:
+  - 1
+  - 2
+  - 2
   max_freq: 30.0
   ppw: 5.0
-
 material:
   type: isotropic_elastic
   format: constant
   vp: 3000.0
   vs: 1700.0
   rho: 2200.0
-
 device:
   type: gpu
-
 boundary:
   absorbing:
-    type: cerjan
-    sides: [bottom, top, left, right, front, back]
+    sides:
+    - bottom
+    - top
+    - left
+    - right
+    - front
+    - back
     thickness: 200.0
     alpha: 0.001
-
 receivers:
-  type: [VEL]
-
+  type:
+  - VEL
 sources: {}
-
 run:
   binary: /scratch/proj/build/src/semsws
   scheduler: slurm
   launcher: srun
-  ranks_per_shot: 4         # 4 ranks/shot = 4 GPUs/shot (1 rank = 1 GPU)
+  ranks_per_shot: 4
   device_kind: hip
-  shots_per_job: 4          # 4 × 4 = 16 GPUs total (= --nodes=4)
+  shots_per_job: 4
   binding:
     extra_launcher_args:
-      slurm: ["--cpu-bind=cores", "--mem-bind=local", "--hint=nomultithread"]
-    rank_wrapper: ["./select_gpu.sh"]   # reads ${SLURM_LOCALID}, sets ROCR_VISIBLE_DEVICES
+      slurm:
+      - --cpu-bind=cores
+      - --mem-bind=local
+      - --hint=nomultithread
+    rank_wrapper:
+    - ./select_gpu.sh
     extra_env:
       OMP_PROC_BIND: close
       OMP_PLACES: cores
   env:
-    OMP_NUM_THREADS: "1"     # GPU run; host-side OMP not used
-    MPICH_GPU_SUPPORT_ENABLED: "1"
+    OMP_NUM_THREADS: '1'
+    MPICH_GPU_SUPPORT_ENABLED: '1'
+vis:
+  wavefield:
+    enabled: false

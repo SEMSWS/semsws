@@ -1,124 +1,110 @@
-
-name: "3D Elastic Analytic Benchmark"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
-
+name: 3D Elastic Analytic Benchmark
 simulation:
   dimension: 3
-  order: 4            # NGLL = 5
-
-  time:
-    dt: 0.001
-    steps: 14000
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 500
-    wavefield:
-      enabled: false
-      interval: 500
-      formats:
-        - type: glvis
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
-
+  order: 4
+  dt: 0.001
+  steps: 14000
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 500
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0, 0.0]
-  size: [44000.0, 44000.0, 34000.0]
-  elements: [120, 120, 100]
+  origin:
+  - 0.0
+  - 0.0
+  - 0.0
+  size:
+  - 44000.0
+  - 44000.0
+  - 34000.0
+  elements:
+  - 120
+  - 120
+  - 100
   max_freq: 3.0
   ppw: 5.0
-
-# =============================================================================
-# Material Model
-# =============================================================================
-
 material:
   type: isotropic_elastic
   format: constant
   vp: 2800.0
   vs: 1500.0
   rho: 2300.0
-
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
-
 boundary:
   absorbing:
-    type: cerjan
-    sides: [bottom, right, left, front, back, top]
+    sides:
+    - bottom
+    - right
+    - left
+    - front
+    - back
+    - top
     thickness: 6000.0
     alpha: 0.4
-
-# =============================================================================
-# Sources
-# =============================================================================
-
 sources:
-  mode: simultaneous
-
   list:
-    - id: 1
-      name: "A&R Mxz Source"
-      type: "moment_tensor"
-      location: [22000.0, 22000.0, 22000.0]
-      moment_tensor:
-        Mxx: 0.0
-        Myy: 0.0
-        Mzz: 0.0
-        Mxy: 0.0
-        Mxz: 0.0
-        Myz: -1.0e16
-
-      wavelet:
-        type: ricker
-        frequency: 1.0
-        delay: 1.5
-        amplitude: 1.0
-
-# =============================================================================
-# Receivers
-# =============================================================================
-
+  - type: moment_tensor
+    location:
+    - 22000.0
+    - 22000.0
+    - 22000.0
+    moment_tensor:
+      Mxx: 0.0
+      Myy: 0.0
+      Mzz: 0.0
+      Mxy: 0.0
+      Mxz: 0.0
+      Myz: -1.0e16
+    wavelet:
+      type: ricker
+      frequency: 1.0
+      delay: 1.5
+      amplitude: 1.0
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "seismograms"
-
-  type: [DISP]
-
+    - ascii
+    filename: seismograms
+  type:
+  - DISP
   list:
-    # Receiver positions (Aki–Richards convention mapped to SEM-Next):
-    # A&R (x_N, y_E, z_D) -> SEM-Next (22000+y_E, 22000+x_N, 22000-z_D)
-    - name: "Z1"
-      location: [25000.0, 23000.0, 18000.0]
-    - name: "Z2"
-      location: [23000.0, 25000.0, 18000.0]
-    - name: "Z3"
-      location: [28000.0, 23000.0, 18000.0]
-    - name: "Z4"
-      location: [23000.0, 28000.0, 18000.0]
-    - name: "Z5"
-      location: [28000.0, 23000.0, 20000.0]
-    - name: "Z6"
-      location: [23000.0, 28000.0, 20000.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
-
+  - name: Z1
+    location:
+    - 25000.0
+    - 23000.0
+    - 18000.0
+  - name: Z2
+    location:
+    - 23000.0
+    - 25000.0
+    - 18000.0
+  - name: Z3
+    location:
+    - 28000.0
+    - 23000.0
+    - 18000.0
+  - name: Z4
+    location:
+    - 23000.0
+    - 28000.0
+    - 18000.0
+  - name: Z5
+    location:
+    - 28000.0
+    - 23000.0
+    - 20000.0
+  - name: Z6
+    location:
+    - 23000.0
+    - 28000.0
+    - 20000.0
 device:
   type: hip
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    enabled: false
+    interval: 500
+    formats:
+    - glvis

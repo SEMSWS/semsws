@@ -202,6 +202,20 @@ SourceTimeFunction SourceTimeFunction::FromConfig(
     const SourceConfig::WaveletConfig& config,
     int nt, real_t dt) {
 
+    // Pre-loaded STF samples (HDF5 input bundle) take precedence over
+    // analytic / external-file synthesis. The HDF5 reader enforces
+    // length == n_samples and dtype f64.
+    if (!config.stf_samples.empty()) {
+        MFEM_VERIFY(static_cast<int>(config.stf_samples.size()) == nt,
+            "pre-loaded STF: stf_samples length " <<
+            config.stf_samples.size() << " != nt " << nt);
+        DenseMatrix dm(nt, 1);
+        for (int i = 0; i < nt; ++i) {
+            dm(i, 0) = config.stf_samples[i];
+        }
+        return SourceTimeFunction(dm, dt);
+    }
+
     if (config.type == "ricker") {
         return SourceTimeFunction::Ricker(
             config.frequency, config.delay, dt, nt, config.amplitude);
@@ -212,17 +226,6 @@ SourceTimeFunction SourceTimeFunction::FromConfig(
         MFEM_VERIFY(!config.external_file.empty(),
             "wavelet.type='external' requires 'file' parameter");
         return SourceTimeFunction::FromExternalFile(config.external_file, dt, nt);
-    } else if (config.type == "hdf5") {
-        // STF samples were pre-loaded by HDF5SourceReceiverReader; the
-        // reader already enforced length == nt and dtype f64.
-        MFEM_VERIFY(static_cast<int>(config.stf_samples.size()) == nt,
-            "wavelet.type='hdf5': stf_samples length " <<
-            config.stf_samples.size() << " != nt " << nt);
-        DenseMatrix dm(nt, 1);
-        for (int i = 0; i < nt; ++i) {
-            dm(i, 0) = config.stf_samples[i];
-        }
-        return SourceTimeFunction(dm, dt);
     }
     // Default to Ricker
     return SourceTimeFunction::Ricker(

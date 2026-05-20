@@ -1,145 +1,106 @@
-
-name: "3D ELASTIC"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
-
+name: 3D ELASTIC
 simulation:
   dimension: 3
-  order: 4            # NGLL = 5
-
-
-  time:
-    dt: 0.001
-    steps: 4000
-    cfl_factor: 0.3   # CFL safety factor (for auto dt)
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 100
-    wavefield:
-      enabled: false
-      interval: 500
-      formats:
-        - type: glvis
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
-
+  order: 4
+  dt: 0.001
+  steps: 4000
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 100
+  summary_file: summary.txt
 mesh:
-  type: internal      # Use internal Cartesian mesh generator
-
-  # Domain: 5km x 5km x 5km box
-  origin: [0.0, 0.0, 0.0]
-  size: [5000.0, 5000.0, 5000.0]
-
-  # 50 x 50 x 50 elements
-  elements: [20, 20, 20]
+  type: internal
+  origin:
+  - 0.0
+  - 0.0
+  - 0.0
+  size:
+  - 5000.0
+  - 5000.0
+  - 5000.0
+  elements:
+  - 20
+  - 20
+  - 20
   max_freq: 2.5
   ppw: 5.0
-
-
-# =============================================================================
-# Material Model
-# =============================================================================
-
 material:
   type: isotropic_elastic
   format: constant
   file: tmp.dat
-
-  # Elastic properties (same as SPECFEM3D) =3382.268568 m/s, vs=1952.696387
-  vp: 3000.    #3000.0         # P-wave velocity (m/s)
-  vs: 1732.    #1732.0         # S-wave velocity (m/s)
-  rho: 2500.   #2500.0        # Density (kg/m^3)
-
+  vp: 3000.0
+  vs: 1732.0
+  rho: 2500.0
   attenuation:
     enabled: true
-    f0: 1.0           # Reference frequency (Hz) for Q fitting band [0.1*f0, 10*f0]
-    n_units: 3        # N_SLS = 3
-    Qkappa: 10.0      # Q for bulk modulus
-    Qmu: 10.0         # Q for shear modulus
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
+    f0: 1.0
+    n_units: 3
+    qkappa: 10.0
+    qmu: 10.0
 boundary:
   absorbing:
-    # No ABC - free surface on all sides (matching SPECFEM3D)
-    type: cerjan
-    sides: [] #[bottom, right, left, front, back]
-    thickness: 1200.
+    sides: []
+    thickness: 1200.0
     alpha: 0.008
-
-    # Free surface on all sides (in acoustic case, free surface should be true on all sides, otherwise they are treated as neuman bc)
-
-  dirichlet:
-    attributes: [] #[top]         # All sides are free by default when no ABC
-
-# =============================================================================
-# Sources
-# =============================================================================
-
+  dirichlet: []
 sources:
-  mode: simultaneous
-  
   list:
-    - id: 1
-      name: "Source 1"
-      type: "moment_tensor"
-      location: [2500, 2500.0, 2500.0]  # Center of domain
-      direction: [0.0, 1.0, 0.0]          # Z-direction force
-      moment_tensor:
-        Mxx: 0
-        Myy: 0
-        Mzz: 0
-        Mxy: -1.0
-        Mxz: 1.
-        Myz: -1.
-
-      wavelet:
-        type: ricker
-        frequency: 1.    # 5 Hz Ricker wavelet
-        delay: 1.2        # Time delay (s)
-        amplitude: 1.0e10 # Force amplitude
-
-# =============================================================================
-# Receivers
-# =============================================================================
-
+  - type: moment_tensor
+    location:
+    - 2500
+    - 2500.0
+    - 2500.0
+    moment_tensor:
+      Mxx: 0
+      Myy: 0
+      Mzz: 0
+      Mxy: -1.0
+      Mxz: 1.0
+      Myz: -1.0
+    wavelet:
+      type: ricker
+      frequency: 1.0
+      delay: 1.2
+      amplitude: 1.0e10
 receivers:
   output:
     formats:
-      - type: ascii
-    filename: "seismograms.h5"
-
-  type: [DISP, VEL]
-
+    - ascii
+    filename: seismograms.h5
+  type:
+  - DISP
+  - VEL
   list:
-    - name: "R01"
-      location: [2500.0, 3000.0, 4999.0]
-    - name: "R02"
-      location: [2500.0, 3500.0, 4999.0]
-    - name: "R03"
-      location: [2500.0, 4000.0, 4999.0]
-    - name: "R04"
-      location: [3000.0, 2500.0, 4999.0]
-    - name: "R05"
-      location: [3500.0, 2500.0, 4999.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
-
+  - name: R01
+    location:
+    - 2500.0
+    - 3000.0
+    - 4999.0
+  - name: R02
+    location:
+    - 2500.0
+    - 3500.0
+    - 4999.0
+  - name: R03
+    location:
+    - 2500.0
+    - 4000.0
+    - 4999.0
+  - name: R04
+    location:
+    - 3000.0
+    - 2500.0
+    - 4999.0
+  - name: R05
+    location:
+    - 3500.0
+    - 2500.0
+    - 4999.0
 device:
-  type: cpu                  # Options: cpu, cuda, hip
-  seismo_buffer_steps: 0       # GPU seismogram buffer (0 = all steps)
-
-# =============================================================================
-# Wavefield Output (optional)
-# =============================================================================
-
-
+  type: cpu
+vis:
+  wavefield:
+    enabled: false
+    interval: 500
+    formats:
+    - glvis

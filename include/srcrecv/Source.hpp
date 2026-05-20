@@ -385,10 +385,11 @@ public:
     /// Reset all sources (clear for new simulation)
     void Reset();
 
-    /// Set active source for sequential mode (only this source assembles)
+    /// Restrict assembly to a single source (used by AdjointSimulation's
+    /// per-source loop). Forward simulation runs all sources together.
     void SetActiveSource(int id);
 
-    /// Clear active source filter (all sources assemble, simultaneous mode)
+    /// Clear active source filter so all sources contribute again.
     void ClearActiveSource();
 
     /// Initialize (alias for Reset for legacy compatibility)
@@ -419,7 +420,7 @@ private:
     ParFiniteElementSpace* fes_;
     MPI_Comm comm_;  // Store by value to avoid dangling pointer
     std::vector<std::unique_ptr<PointSourceBase>> sources_;
-    int active_source_id_ = -1;  // -1 = all sources active (simultaneous)
+    int active_source_id_ = -1;  // -1 = all sources active (default)
     bool setup_done_ = false;
 };
 

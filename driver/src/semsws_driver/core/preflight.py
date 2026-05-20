@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 def mesh_needs_partition(mesh: dict, ranks_per_shot: int) -> bool:
     if ranks_per_shot <= 1:
         return False
-    return str(mesh.get("type", "")) != "partitioned"
+    return str(mesh.get("type", "")) != "prepart_mfem"
 
 
 def _resolve_launcher_executable(launcher: str) -> str:
@@ -118,8 +118,8 @@ def run_mesh_preflight(
         log.info("[mesh-preflight] %s", proc.stdout.strip())
 
     return {
-        "type": "partitioned",
-        "partitioned": {
+        "type": "prepart_mfem",
+        "prepart_mfem": {
             "directory": str(output_dir),
             "nparts": int(rc.ranks_per_shot),
         },

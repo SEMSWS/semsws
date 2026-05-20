@@ -16,7 +16,7 @@ def test_mesh_needs_partition_skips_single_rank():
 
 
 def test_mesh_needs_partition_skips_already_partitioned():
-    assert preflight.mesh_needs_partition({"type": "partitioned"}, ranks_per_shot=4) is False
+    assert preflight.mesh_needs_partition({"type": "prepart_mfem"}, ranks_per_shot=4) is False
 
 
 def test_mesh_needs_partition_true_for_internal_multi_rank():
@@ -82,10 +82,10 @@ def test_run_mesh_preflight_invokes_subprocess(tmp_path: Path, monkeypatch):
     out = preflight.run_mesh_preflight(
         mesh=mesh, rc=rc, layout=L, launcher="mpirun",
     )
-    assert out["type"] == "partitioned"
-    # SEMSWS expects mesh.partitioned.{directory, nparts} sub-block.
-    assert out["partitioned"]["nparts"] == 4
-    assert Path(out["partitioned"]["directory"]) == L.shared_mesh_partitions_dir
+    assert out["type"] == "prepart_mfem"
+    # SEMSWS expects mesh.prepart_mfem.{directory, nparts} sub-block.
+    assert out["prepart_mfem"]["nparts"] == 4
+    assert Path(out["prepart_mfem"]["directory"]) == L.shared_mesh_partitions_dir
     assert out["max_freq"] == 30.0   # carry-through metadata
     assert captured, "subprocess should have been invoked"
     cmd = captured[0]

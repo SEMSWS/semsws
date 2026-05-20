@@ -1,70 +1,26 @@
-# =============================================================================
-# Visualization Test - 2D Acoustic
-# =============================================================================
-# Tests all visualization output formats: ParaView, GMT, GLVis
-# Also tests material output and mesh saving.
-# Short simulation (100 steps) just to produce output files.
-
-name: "Visualization Test - 2D Acoustic"
-
-# =============================================================================
-# Simulation Parameters
-# =============================================================================
+name: Visualization Test - 2D Acoustic
 simulation:
   dimension: 2
   order: 4
-
-  time:
-    steps: 10000
-    dt: 0.0001
-    cfl_factor: 0.3
-
-  output:
-    directory: "./results"
-    summary_file: "summary.txt"
-    log_interval: 1000
-
-    # ----- Wavefield output (all formats) -----
-    wavefield:
-      enabled: true
-      interval: 1000
-      fields: ["PS"]
-      formats:
-        - type: "glvis"
-        - type: "paraview"
-          refinement: 4
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [100, 50]
-          component: -1
-
-    # ----- Material output (all formats) -----
-    material:
-      enabled: true
-      fields: ["vp", "rho"]
-      formats:
-        - type: "glvis"
-        - type: "paraview"
-          refinement: 4
-          data_format: "binary32"
-        - type: "gmt"
-          resolution: [100, 50]
-
-# =============================================================================
-# Mesh Configuration
-# =============================================================================
+  steps: 10000
+  dt: 0.0001
+  cfl_factor: 0.3
+  directory: ./results
+  log_interval: 1000
+  summary_file: summary.txt
 mesh:
   type: internal
-  origin: [0.0, 0.0]
-  size: [1000.0, 500.0]
-  elements: [50, 25]
-  save: true
+  origin:
+  - 0.0
+  - 0.0
+  size:
+  - 1000.0
+  - 500.0
+  elements:
+  - 50
+  - 25
   max_freq: 75.0
   ppw: 5.0
-
-# =============================================================================
-# Material Properties
-# =============================================================================
 material:
   type: isotropic_acoustic
   format: constant
@@ -72,58 +28,80 @@ material:
   rho: 1000.0
   attenuation:
     enabled: false
-
-# =============================================================================
-# Boundary Conditions
-# =============================================================================
 boundary:
   absorbing:
-    type: cerjan
     sides: []
     thickness: 100.0
     alpha: 0.008
-
   dirichlet:
-    attributes: [top, right, left, bottom]
-
-# =============================================================================
-# Sources
-# =============================================================================
+  - top
+  - right
+  - left
+  - bottom
 sources:
-  mode: sequential
-
+  shot_id: 1
   list:
-    - id: 1
-      name: "Source 1"
-      type: pressure
-      location: [500.0, 400.0]
-      wavelet:
-        type: ricker
-        frequency: 30.0
-        amplitude: 1.0e10
-        delay: 0.05
-
-# =============================================================================
-# Receivers
-# =============================================================================
+  - type: pressure
+    location:
+    - 500.0
+    - 400.0
+    wavelet:
+      type: ricker
+      frequency: 30.0
+      amplitude: 1.0e10
+      delay: 0.05
 receivers:
   output:
-    format: ascii
-    filename: "seismograms"
-
-  type: [PS]
-
+    formats:
+    - ascii
+    filename: seismograms
+  type:
+  - PS
   list:
-    - name: "R001"
-      location: [400.0, 300.0]
-    - name: "R002"
-      location: [500.0, 300.0]
-    - name: "R003"
-      location: [600.0, 300.0]
-
-# =============================================================================
-# Device Configuration
-# =============================================================================
+  - name: R001
+    location:
+    - 400.0
+    - 300.0
+  - name: R002
+    location:
+    - 500.0
+    - 300.0
+  - name: R003
+    location:
+    - 600.0
+    - 300.0
 device:
   type: cpu
-  seismo_buffer_steps: 0
+vis:
+  wavefield:
+    components:
+    - -1
+    enabled: true
+    interval: 1000
+    fields:
+    - PS
+    formats:
+    - glvis
+    - type: paraview
+      refinement: 4
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 100
+      - 50
+  material:
+    enabled: true
+    fields:
+    - vp
+    - rho
+    formats:
+    - glvis
+    - type: paraview
+      refinement: 4
+      data_format: binary32
+    - type: gmt
+      resolution:
+      - 100
+      - 50
+  mesh:
+    enabled: true

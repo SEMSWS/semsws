@@ -63,9 +63,9 @@ def _make_template(binary: Path) -> dict:
     return {
         "name": "smoke_2d_acoustic",
         "simulation": {"dimension": 2, "order": 4, "mode": "forward",
-                       "time": {"steps": 200, "dt": 5e-4, "cfl_factor": 0.5},
-                       "output": {"log_interval": 200,
-                                   "wavefield": {"enabled": False}}},
+                       "steps": 200, "dt": 5e-4, "cfl_factor": 0.5,
+                       "log_interval": 200},
+        "vis": {"wavefield": {"enabled": False}},
         "mesh": {"type": "internal",
                  "origin": [0.0, 0.0], "size": [1000.0, 1000.0],
                  "elements": [10, 10],
@@ -74,8 +74,7 @@ def _make_template(binary: Path) -> dict:
                      "vp": 1500.0, "rho": 1000.0},
         "device": {"type": "cpu"},
         "boundary": {
-            "absorbing": {"type": "cerjan", "sides": [],
-                           "thickness": 0.0, "alpha": 0.0},
+            "absorbing": {"sides": [], "thickness": 0.0, "alpha": 0.0},
         },
         "receivers": {"type": ["PS"]},
         "sources": {},

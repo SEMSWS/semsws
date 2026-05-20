@@ -104,14 +104,11 @@ def _write_yaml(yaml_path: Path, mesh_name: str) -> None:
         simulation:
           dimension: 2
           order: 4
-          time:
-            dt: {DT}
-            steps: {NT}
-            cfl_factor: 0.3
-          output:
-            directory: "./out"
-            log_interval: 10000
-            summary: "summary.txt"
+          dt: {DT}
+          steps: {NT}
+          cfl_factor: 0.3
+          directory: "./out"
+          log_interval: 10000
         mesh:
           type: external
           file: {mesh_name}
@@ -134,14 +131,11 @@ def _write_yaml(yaml_path: Path, mesh_name: str) -> None:
             rho: {RHO_SOLID}
         boundary:
           absorbing:
-            type: cerjan
             sides: []
             thickness: 0.0
             alpha: 0.0
-          dirichlet:
-            attributes: [11]
+          dirichlet: [11]
         sources:
-          mode: simultaneous
           list:
             - id: 1
               name: "solid-force-y"
@@ -156,7 +150,7 @@ def _write_yaml(yaml_path: Path, mesh_name: str) -> None:
         receivers:
           output:
             formats:
-              - type: ascii
+              - ascii
             filename: "rcv"
           type: [PS]
           list:

@@ -39,8 +39,7 @@ class SensitivityKernelBase3D;
 std::unique_ptr<SensitivityKernelBase2D>
 CreateElasticSensitivityKernel2D(const ElasticMaterialBase2D& material,
                                  mfem::ParFiniteElementSpace& fes,
-                                 const std::string& backend = "hand",
-                                 bool invert_Q = false);
+                                 const std::string& backend = "hand");
 
 /// Build the 3D elastic FWI sensitivity kernel.
 ///
@@ -50,8 +49,7 @@ CreateElasticSensitivityKernel2D(const ElasticMaterialBase2D& material,
 std::unique_ptr<SensitivityKernelBase3D>
 CreateElasticSensitivityKernel3D(const ElasticMaterialBase3D& material,
                                  mfem::ParFiniteElementSpace& fes,
-                                 const std::string& backend = "hand",
-                                 bool invert_Q = false);
+                                 const std::string& backend = "hand");
 
 /// Build the 2D acoustic FWI sensitivity kernel.
 /// Currently returns IsotropicAcousticSensitivity2D for IsotropicAcoustic;
@@ -65,8 +63,7 @@ CreateElasticSensitivityKernel3D(const ElasticMaterialBase3D& material,
 std::unique_ptr<SensitivityKernelBase2D>
 CreateAcousticSensitivityKernel2D(const AcousticMaterialBase2D& material,
                                   mfem::ParFiniteElementSpace& fes,
-                                  const std::string& backend = "hand",
-                                  bool invert_Q = false);
+                                  const std::string& backend = "hand");
 
 /// Build the 3D acoustic FWI sensitivity kernel.
 ///
@@ -75,8 +72,7 @@ CreateAcousticSensitivityKernel2D(const AcousticMaterialBase2D& material,
 std::unique_ptr<SensitivityKernelBase3D>
 CreateAcousticSensitivityKernel3D(const AcousticMaterialBase3D& material,
                                   mfem::ParFiniteElementSpace& fes,
-                                  const std::string& backend = "hand",
-                                  bool invert_Q = false);
+                                  const std::string& backend = "hand");
 
 }  // namespace SEM
 

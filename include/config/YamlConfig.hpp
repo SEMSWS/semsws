@@ -33,63 +33,36 @@ using mfem::real_t;
  * @brief Absorbing boundary condition configuration
  */
 struct ABCConfig {
-    std::string type;                    // "kosloff" | "shin" | "pml"
-    std::vector<std::string> sides;      // ["left", "right", "bottom", ...]
+    std::vector<std::string> sides;      // ["left", "right", "bottom", ...]; empty = disabled
     real_t thickness;                    // Sponge layer thickness (m)
-    real_t alpha;                        // Damping coefficient (-1 for auto)
+    real_t alpha;                        // Damping coefficient
 
-    ABCConfig() : type("kosloff"), thickness(0.0), alpha(-1.0) {}
-};
-
-/**
- * @brief Optional resampling spec for observed data
- */
-struct ObservedResampleDef {
-    bool enabled = false;
-    std::string method = "lanczos";   // "lanczos" | "linear"
-    int lanczos_a = 4;
-};
-
-/**
- * @brief Observed data definition (per-source).
- *
- * One source = one HDF5 file (canonical format). All receiver metadata
- * (positions, channels, weights, dt/t0/n_samples/space_dim) live inside
- * the HDF5 file itself.
- */
-struct ObservedSourceDef {
-    std::string file;                    // path to source_NNNN.h5
-    ObservedResampleDef resample;
+    ABCConfig() : thickness(0.0), alpha(0.0) {}
 };
 
 /**
  * @brief Source definition from YAML
  */
 struct SourceDef {
-    int id;                              // Source identifier
-    std::string name;                    // Source name
+    int id;                              // Optional in YAML — auto-assigned i+1 if omitted
+    std::string name;                    // Optional in YAML — diagnostic only ("source_<id>" default)
     std::string type;                    // "force" | "moment_tensor" | "pressure"
     real_t location[3];                  // [x, y, z] position
     real_t direction[3];                 // [dx, dy, dz] unit vector (for force)
 
     // Wavelet parameters
-    std::string wavelet_type;            // "ricker" | "gaussian" | "external" | "hdf5"
+    std::string wavelet_type;            // "ricker" | "gaussian" | "external"
     real_t frequency;                    // Dominant frequency (Hz)
     real_t amplitude;                    // Amplitude scaling
     real_t delay;                        // Time delay (s)
     std::string external_file;           // Path to external STF file (for wavelet_type="external")
-    std::vector<real_t> stf_samples;     // Pre-loaded STF samples (wavelet_type="hdf5"); length == nt
+    std::vector<real_t> stf_samples;     // Pre-loaded STF samples (HDF5 bundle); non-empty bypasses analytic synthesis
 
     // Moment tensor components (for moment_tensor type)
     real_t M[6];                         // Mxx, Myy, Mzz, Mxy, Mxz, Myz
 
-    // Observed data (inversion mode only)
-    ObservedSourceDef observed;          // Canonical HDF5 observed-data spec
-    bool has_observed;                   // Whether observed section exists
-
     SourceDef() : id(0), type("force"), wavelet_type("ricker"),
-                  frequency(0.0), amplitude(1.0), delay(0.0),
-                  has_observed(false) {
+                  frequency(0.0), amplitude(1.0), delay(0.0) {
         for (int i = 0; i < 3; i++) {
             location[i] = 0.0;
             direction[i] = 0.0;
@@ -112,24 +85,6 @@ struct ReceiverDef {
         for (int i = 0; i < 3; i++) location[i] = 0.0;
     }
 };
-
-/**
- * @brief Receiver line definition for linear spacing between two points
- */
-struct ReceiverLineDef {
-    real_t start[3];                     // Start position
-    real_t end_[3];                      // End position (end_ to avoid keyword)
-    int count;                           // Number of receivers
-    std::string prefix;                  // Name prefix
-
-    ReceiverLineDef() : count(0), prefix("REC") {
-        for (int i = 0; i < 3; i++) {
-            start[i] = 0.0;
-            end_[i] = 0.0;
-        }
-    }
-};
-
 
 // =============================================================================
 // YamlConfig Class
@@ -252,8 +207,12 @@ public:
     MaterialOutputConfig GetMaterialOutputConfig(
         const std::string& side) const;
 
-    /** @brief Check if mesh saving is enabled (mesh.save) */
+    /** @brief Check if mesh saving is enabled (vis.mesh true / {enabled: true}) */
     bool GetMeshSave() const;
+
+    /** @brief Visualization output directory (vis.directory or
+     *         <output.directory>/vis fallback). */
+    std::string GetVisDirectory() const;
 
     /** @brief Get log output interval (steps) */
     int GetLogInterval() const;
@@ -277,9 +236,6 @@ public:
     /** @brief Get external mesh file path */
     std::string GetMeshFile() const;
 
-    /** @brief Get mesh format: "gmsh" | "mfem" | "exodus" | "vtk" */
-    std::string GetMeshFormat() const;
-
     /**
      * @brief Get internal mesh origin
      * @param origin Array to fill [x, y] (2D) or [x, y, z] (3D)
@@ -298,14 +254,8 @@ public:
      */
     void GetMeshElements(int* nel) const;
 
-    /** @brief y-coordinate threshold for splitting internal mesh into 2 attributes
-     *  Returns NaN when not set. Elements with center.y > threshold get
-     *  attribute=1; the rest get attribute=2. Used to mark a water layer
-     *  (attr 1, frozen) vs an inverted solid (attr 2). */
-    real_t GetMeshAttrYThreshold() const;
-
     /** @brief Get mesh partitioning method: "metis" | "cartesian" */
-    std::string GetMeshPartition() const;
+    std::string GetMeshPartitionMethod() const;
 
     /** @brief Get partition grid for Cartesian partitioning */
     void GetPartitionGrid(int* nxyz) const;
@@ -330,7 +280,7 @@ public:
     /** @brief Get material type: "isotropic" | "vti" | "tti" */
     std::string GetMaterialType() const;
 
-    /** @brief Get material format: "hdf5" | "ascii" | "constant" */
+    /** @brief Get material format: "constant" | "grid" | "by_attribute" | "by_attribute_mixed" | "adios2" */
     std::string GetMaterialFormat() const;
 
     /**
@@ -386,21 +336,12 @@ public:
     /** @brief Get number of relaxation mechanisms for attenuation */
     int GetAttenuationNumUnits() const;
 
-    /** @brief Get constant Q_kappa value (returns -1 if from file) */
+    /** @brief Get constant Q_kappa value */
     real_t GetConstantQkappa() const;
 
-    /** @brief Get constant Q_mu value (returns -1 if from file) */
+    /** @brief Get constant Q_mu value (returns -1 for acoustic) */
     real_t GetConstantQmu() const;
 
-    /** @brief Get Q_kappa file path (empty if constant) */
-    std::string GetQkappaFile() const;
-
-    /** @brief Get Q_mu file path (empty if constant) */
-    std::string GetQmuFile() const;
-
-    // GetQkappaDataset(), GetQmuDataset() removed - unused
-    // GetAsciiMaterialParams() removed - unused (AsciiMaterialParams struct also removed)
-    // HasMaterialByAttribute(), GetMaterialByAttribute() removed - unused (AttributeMaterialDef struct also removed)
 
     /**
      * @brief Get path to by_attribute material file
@@ -425,12 +366,6 @@ public:
     /** @brief Get ADIOS2 Qmu .bp file path (for format="adios2", visco-elastic) */
     std::string GetADIOS2QmuFile() const;
 
-    /** @brief Check if model export is enabled (material.export_model: true) */
-    bool IsExportModelEnabled() const;
-
-    /** @brief Get model export directory (material.export_dir, default "./model/") */
-    std::string GetExportModelDir() const;
-
     // =========================================================================
     // Boundary Section
     // =========================================================================
@@ -445,17 +380,10 @@ public:
     // Sources Section
     // =========================================================================
 
-    /** @brief Get source execution mode: "simultaneous" | "sequential" */
-    std::string GetSourceMode() const;
-
-    /** @brief Get external source file path (empty if inline) */
+    /** @brief Get HDF5 bundle path (empty when sources are inline) */
     std::string GetSourceFile() const;
 
-    /** @brief Source input format: "yaml" (default; inline list / external
-     *         YAML) or "hdf5" (v2.0 SEMSWS HDF5 file). */
-    std::string GetSourceFormat() const;
-
-    /** @brief HDF5 shot index (only meaningful when GetSourceFormat()=="hdf5").
+    /** @brief HDF5 shot index (only meaningful when sources.file is set).
      *         Default 0. */
     int GetSourceShotId() const;
 
@@ -469,25 +397,8 @@ public:
     /** @brief Check if receivers section exists */
     bool HasReceivers() const;
 
-    /** @brief Get external receiver file path (empty if inline) */
-    std::string GetReceiverFile() const;
-
-    /** @brief Receiver input format: "yaml" (default; inline list / line /
-     *         external YAML) or "hdf5" (v2.0 SEMSWS HDF5 file). */
-    std::string GetReceiverFormat() const;
-
-    /** @brief HDF5 shot index (only meaningful when GetReceiverFormat()=="hdf5").
-     *         Default 0. */
-    int GetReceiverShotId() const;
-
     /** @brief Get all receiver definitions */
     std::vector<ReceiverDef> GetAllReceivers() const;
-
-    /** @brief Check if receiver line is defined */
-    bool HasReceiverLine() const;
-
-    /** @brief Get receiver line definition */
-    ReceiverLineDef GetReceiverLine() const;
 
     /** @brief Get receiver output formats (one or more of: "hdf5", "ascii", "su") */
     std::vector<std::string> GetReceiverOutputFormats() const;
@@ -502,8 +413,8 @@ public:
     /** @brief Get device type: "cpu" | "cuda" | "hip" */
     std::string GetDevice() const;
 
-    /** @brief Get seismogram buffer steps for GPU recording (0 = all steps) */
-    int GetSeismoBufferSteps() const;
+    /** @brief Receiver record buffer steps (GPU only; 0 = flush at end). */
+    int GetReceiverBufferSteps() const;
 
     // =========================================================================
     // Simulation Mode
@@ -547,13 +458,6 @@ public:
      * the numerical parity verification.
      */
     std::string GetSensitivityBackend() const;
-
-    /// Whether Q (Qκ, Qμ) should be treated as an inversion parameter.
-    /// When true, the sensitivity kernel factory must return a backend
-    /// that accumulates K_Qκ / K_Qμ alongside K_Vp / K_Vs / K_ρ; the `hand`
-    /// backend does not implement this and the factory aborts. Reads
-    /// `inversion.invert_Q: bool` (default false).
-    bool GetInvertQ() const;
 
 private:
     YAML::Node root_;                    // Root YAML node

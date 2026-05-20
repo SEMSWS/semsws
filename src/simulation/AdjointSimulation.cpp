@@ -38,7 +38,6 @@ void AdjointSimulation<Dim>::Run() {
     MFEM_VERIFY(this->config_, "Config must be loaded before Run()");
     MFEM_VERIFY(this->sources_, "Sources must be set up before Run()");
 
-    const int num_sources = this->sources_->NumSources();
     num_checkpoints_ = this->config_->GetNumCheckpoints();
 
     // Determine mode
@@ -61,78 +60,70 @@ void AdjointSimulation<Dim>::Run() {
         CreateKernel();
     }
 
-    source_misfits_.resize(num_sources, 0.0);
-    source_l2_misfits_.resize(num_sources, 0.0);
+    total_misfit_ = 0.0;
+    total_l2_misfit_ = 0.0;
 
-    // Sequential source loop
-    for (int src_idx = 0; src_idx < num_sources; src_idx++) {
-        RunOneSource(src_idx, kernel_dir);
+    // Single forward+adjoint per shot. All configured sources fire together
+    // (simultaneous superposition), mirroring ForwardSimulation::Run.
+    // Multi-shot inversion is handled externally by the driver (per-shot
+    // YAML synthesis), which accumulates kernels across shots via SumKernels.
+    RunOneShot(kernel_dir);
 
-        using Clock = std::chrono::steady_clock;
+    using Clock = std::chrono::steady_clock;
+    const int shot_id = this->config_->GetSourceShotId();
 
-        // Save kernel (inversion mode only)
-        if (!misfit_only_) {
-            auto all_sources = this->config_->GetAllSources();
-            int source_id = all_sources[src_idx].id;
-            auto t0 = Clock::now();
-            kernel_->Save(kernel_dir, this->Mesh(), source_id);
-            kernel_->SaveHessian(kernel_dir, this->Mesh(), source_id);
-            t_io_kernel_ += std::chrono::duration<double>(Clock::now() - t0).count();
-            n_kernel_writes_++;
-            kernel_->Reset();
-            kernel_->ResetHessian();
-        }
-
-        // Save per-source misfit to file (both modes)
-        {
-            auto all_sources = this->config_->GetAllSources();
-            int source_id = all_sources[src_idx].id;
-            if (this->IsRoot()) {
-                auto t0 = Clock::now();
-                std::string misfit_file = kernel_dir + "/misfit_src"
-                    + std::to_string(source_id) + ".txt";
-                std::ofstream ofs(misfit_file);
-                ofs << std::scientific << std::setprecision(12)
-                    << source_misfits_[src_idx] << std::endl;
-                // Diagnostic L2 sidecar (parallel-computed, never feeds adjoint).
-                // Python's read_misfit_l2() picks this up; absence is benign.
-                std::string l2_file = kernel_dir + "/misfit_l2_src"
-                    + std::to_string(source_id) + ".txt";
-                std::ofstream ofs_l2(l2_file);
-                ofs_l2 << std::scientific << std::setprecision(12)
-                    << source_l2_misfits_[src_idx] << std::endl;
-                t_io_misfit_ += std::chrono::duration<double>(Clock::now() - t0).count();
-                n_misfit_writes_++;
-            }
-        }
+    // Save kernel (inversion mode only)
+    if (!misfit_only_) {
+        auto t0 = Clock::now();
+        kernel_->Save(kernel_dir, this->Mesh(), shot_id);
+        kernel_->SaveHessian(kernel_dir, this->Mesh(), shot_id);
+        t_io_kernel_ += std::chrono::duration<double>(Clock::now() - t0).count();
+        n_kernel_writes_++;
+        kernel_->Reset();
+        kernel_->ResetHessian();
     }
 
+    // Save shot misfit to file (both modes)
+    if (this->IsRoot()) {
+        auto t0 = Clock::now();
+        char shot_str[8];
+        snprintf(shot_str, sizeof(shot_str), "%04d", shot_id);
+        std::string misfit_file = kernel_dir + "/misfit_shot"
+            + shot_str + ".txt";
+        std::ofstream ofs(misfit_file);
+        ofs << std::scientific << std::setprecision(12)
+            << total_misfit_ << std::endl;
+        // Diagnostic L2 sidecar (parallel-computed, never feeds adjoint).
+        std::string l2_file = kernel_dir + "/misfit_l2_shot"
+            + shot_str + ".txt";
+        std::ofstream ofs_l2(l2_file);
+        ofs_l2 << std::scientific << std::setprecision(12)
+            << total_l2_misfit_ << std::endl;
+        t_io_misfit_ += std::chrono::duration<double>(Clock::now() - t0).count();
+        n_misfit_writes_++;
+    }
 }
 
 // =============================================================================
-// RunOneSource — per-source workflow dispatcher
+// RunOneShot — single-shot dispatcher (all sources fire simultaneously)
 // =============================================================================
 
 template<int Dim>
-void AdjointSimulation<Dim>::RunOneSource(int source_idx, const std::string& kernel_dir) {
+void AdjointSimulation<Dim>::RunOneShot(const std::string& kernel_dir) {
     if (misfit_only_) {
-        RunMisfitOnly(source_idx, kernel_dir);
+        RunMisfitOnly(kernel_dir);
     } else {
         // --- Phase 0: Common setup ---
-        auto all_sources = this->config_->GetAllSources();
-        const SourceDef& src_def = all_sources[source_idx];
-
-        MFEM_VERIFY(src_def.has_observed,
-            "Source " << source_idx << " has no observed data defined");
-
-        // Reset simulation state
         this->Reset();
-        this->sources_->SetActiveSource(source_idx);
         this->Initialize();
 
-        // Load observed data
+        // Load observed data from the bundled HDF5 (sources.file + shot_id).
+        const std::string obs_file = this->config_->GetSourceFile();
+        const int shot_id = this->config_->GetSourceShotId();
+        MFEM_VERIFY(!obs_file.empty(),
+            "sources.file is empty; required for inversion mode");
         ObservedData observed;
-        observed.Load(src_def.observed, Dim, this->Comm());
+        observed.Load(obs_file, shot_id, Dim, this->Comm());
 
         // Determine domain type
         DomainType domain = GetDomainFromMaterial(this->Material().GetType());
@@ -151,9 +142,8 @@ void AdjointSimulation<Dim>::RunOneSource(int source_idx, const std::string& ker
         // Per-rank hyperslab read of owned observed channels
         observed.FetchOwnedData(*fwd_receivers_, this->Comm());
 
-        // Optional resample onto simulation grid (strict check if disabled)
-        observed.AlignToSimulation(this->NumSteps(), this->Dt(),
-                                   src_def.observed.resample);
+        // Align observed grid (auto-resample on mismatch).
+        observed.AlignToSimulation(this->NumSteps(), this->Dt());
 
         // Set fields for recording
         fwd_receivers_->SetFields(
@@ -161,7 +151,7 @@ void AdjointSimulation<Dim>::RunOneSource(int source_idx, const std::string& ker
 
         // GPU device init for receivers
         if (Device::Allows(Backend::DEVICE_MASK)) {
-            int buffer_steps = this->config_ ? this->config_->GetSeismoBufferSteps() : 0;
+            int buffer_steps = this->config_ ? this->config_->GetReceiverBufferSteps() : 0;
             fwd_receivers_->DeviceInit(buffer_steps);
         }
 
@@ -169,15 +159,12 @@ void AdjointSimulation<Dim>::RunOneSource(int source_idx, const std::string& ker
         storage_ = std::make_unique<InMemoryStorage>(num_checkpoints_);
 
         // --- Revolve adjoint (includes forward sweep with receiver recording) ---
-        RevolveAdjoint(source_idx, kernel_dir);
+        RevolveAdjoint(kernel_dir);
 
         // Cleanup
         fwd_receivers_.reset();
         adjoint_source_.reset();
         storage_.reset();
-
-        // Restore all sources active
-        this->sources_->ClearActiveSource();
     }
 }
 
@@ -186,21 +173,18 @@ void AdjointSimulation<Dim>::RunOneSource(int source_idx, const std::string& ker
 // =============================================================================
 
 template<int Dim>
-void AdjointSimulation<Dim>::RunMisfitOnly(int source_idx, const std::string& kernel_dir) {
-    auto all_sources = this->config_->GetAllSources();
-    const SourceDef& src_def = all_sources[source_idx];
-
-    MFEM_VERIFY(src_def.has_observed,
-        "Source " << source_idx << " has no observed data defined");
-
+void AdjointSimulation<Dim>::RunMisfitOnly(const std::string& kernel_dir) {
     // Reset simulation state
     this->Reset();
-    this->sources_->SetActiveSource(source_idx);
     this->Initialize();
 
-    // Load observed data
+    // Load observed data from the bundled HDF5 (sources.file + shot_id).
+    const std::string obs_file = this->config_->GetSourceFile();
+    const int shot_id = this->config_->GetSourceShotId();
+    MFEM_VERIFY(!obs_file.empty(),
+        "sources.file is empty; required for misfit_only mode");
     ObservedData observed;
-    observed.Load(src_def.observed, Dim, this->Comm());
+    observed.Load(obs_file, shot_id, Dim, this->Comm());
 
     // Determine domain type
     DomainType domain = GetDomainFromMaterial(this->Material().GetType());
@@ -219,9 +203,8 @@ void AdjointSimulation<Dim>::RunMisfitOnly(int source_idx, const std::string& ke
     // Per-rank hyperslab read of owned observed channels
     observed.FetchOwnedData(*fwd_receivers_, this->Comm());
 
-    // Optional resample onto simulation grid (strict check if disabled)
-    observed.AlignToSimulation(this->NumSteps(), this->Dt(),
-                               src_def.observed.resample);
+    // Align observed grid (auto-resample on mismatch).
+    observed.AlignToSimulation(this->NumSteps(), this->Dt());
 
     // Set fields for recording
     fwd_receivers_->SetFields(
@@ -229,13 +212,13 @@ void AdjointSimulation<Dim>::RunMisfitOnly(int source_idx, const std::string& ke
 
     // GPU device init for receivers
     if (Device::Allows(Backend::DEVICE_MASK)) {
-        int buffer_steps = this->config_ ? this->config_->GetSeismoBufferSteps() : 0;
+        int buffer_steps = this->config_ ? this->config_->GetReceiverBufferSteps() : 0;
         fwd_receivers_->DeviceInit(buffer_steps);
     }
 
     // --- Forward sweep ---
     int nt = this->NumSteps();
-    int buffer_steps = this->config_ ? this->config_->GetSeismoBufferSteps() : 0;
+    int buffer_steps = this->config_ ? this->config_->GetReceiverBufferSteps() : 0;
     for (int step = 0; step < nt; step++) {
         fwd_receivers_->Record(step, buffer_steps);
         this->runner_.Step(
@@ -247,29 +230,30 @@ void AdjointSimulation<Dim>::RunMisfitOnly(int source_idx, const std::string& ke
         fwd_receivers_->FlushDeviceBuffer();
     }
 
-    // Save synthetic seismograms
+    // Save synthetic seismograms (filename suffix = shot_id, position from first source)
     {
         using Clock = std::chrono::steady_clock;
         fwd_receivers_->SetOutputConfig("hdf5", kernel_dir, "synthetic");
-        int config_id = src_def.id;
         Vector src_pos(Dim);
-        for (int d = 0; d < Dim; d++) src_pos[d] = src_def.location[d];
+        if (this->sources_->NumSources() > 0) {
+            const Vector& p = this->sources_->GetSource(0)->Position();
+            for (int d = 0; d < Dim; d++) src_pos[d] = p[d];
+        } else {
+            src_pos = 0.0;
+        }
         auto t0 = Clock::now();
-        fwd_receivers_->Save(config_id, this->T0(), &src_pos);
+        fwd_receivers_->Save(shot_id, this->T0(), &src_pos);
         t_io_synthetic_ += std::chrono::duration<double>(Clock::now() - t0).count();
         n_synthetic_writes_++;
     }
 
     // --- Compute misfit ---
-    source_misfits_[source_idx] = adjoint_source_->ComputeResidual(*fwd_receivers_);
-    source_l2_misfits_[source_idx] = adjoint_source_->L2MisfitValue();
+    total_misfit_ = adjoint_source_->ComputeResidual(*fwd_receivers_);
+    total_l2_misfit_ = adjoint_source_->L2MisfitValue();
 
     // Cleanup
     fwd_receivers_.reset();
     adjoint_source_.reset();
-
-    // Restore all sources active
-    this->sources_->ClearActiveSource();
 }
 
 // =============================================================================
@@ -277,12 +261,9 @@ void AdjointSimulation<Dim>::RunMisfitOnly(int source_idx, const std::string& ke
 // =============================================================================
 
 template<int Dim>
-void AdjointSimulation<Dim>::RevolveAdjoint(int source_idx, const std::string& kernel_dir) {
+void AdjointSimulation<Dim>::RevolveAdjoint(const std::string& kernel_dir) {
     int nt = this->NumSteps();
-
-    // Get source definition for synthetic SU output
-    auto all_sources = this->config_->GetAllSources();
-    const SourceDef& src_def = all_sources[source_idx];
+    const int shot_id = this->config_->GetSourceShotId();
 
     // Determine domain type and kappa pointer (needed at FirstTurn for BuildAdjointSources)
     DomainType domain = GetDomainFromMaterial(this->Material().GetType());
@@ -408,18 +389,22 @@ void AdjointSimulation<Dim>::RevolveAdjoint(int source_idx, const std::string& k
             // Save synthetic seismograms
             {
                 fwd_receivers_->SetOutputConfig("hdf5", kernel_dir, "synthetic");
-                int config_id = src_def.id;
                 Vector src_pos(Dim);
-                for (int d = 0; d < Dim; d++) src_pos[d] = src_def.location[d];
+                if (this->sources_->NumSources() > 0) {
+                    const Vector& p = this->sources_->GetSource(0)->Position();
+                    for (int d = 0; d < Dim; d++) src_pos[d] = p[d];
+                } else {
+                    src_pos = 0.0;
+                }
                 auto t0 = Clock::now();
-                fwd_receivers_->Save(config_id, this->T0(), &src_pos);
+                fwd_receivers_->Save(shot_id, this->T0(), &src_pos);
                 t_io_synthetic_ += std::chrono::duration<double>(Clock::now() - t0).count();
                 n_synthetic_writes_++;
             }
 
             // Compute residual (and the diagnostic L2 sidecar)
-            source_misfits_[source_idx] = adjoint_source_->ComputeResidual(*fwd_receivers_);
-            source_l2_misfits_[source_idx] = adjoint_source_->L2MisfitValue();
+            total_misfit_ = adjoint_source_->ComputeResidual(*fwd_receivers_);
+            total_l2_misfit_ = adjoint_source_->L2MisfitValue();
 
             // Build adjoint sources
             adjoint_source_->BuildAdjointSources(this->NumSteps(), this->Dt(), kappa_ptr);
@@ -532,7 +517,7 @@ void AdjointSimulation<Dim>::AdvanceForward(int from_step, int to_step,
                                              ReceiverArray* receivers) {
     int buffer_steps = 0;
     if (receivers) {
-        buffer_steps = this->config_ ? this->config_->GetSeismoBufferSteps() : 0;
+        buffer_steps = this->config_ ? this->config_->GetReceiverBufferSteps() : 0;
     }
 
     for (int s = from_step; s < to_step; s++) {
@@ -657,27 +642,26 @@ void AdjointSimulation<Dim>::CreateKernel() {
     const std::string backend = this->config_
         ? this->config_->GetSensitivityBackend()
         : std::string("hand");
-    const bool invert_Q = this->config_ ? this->config_->GetInvertQ() : false;
     const DomainType domain = this->Material().GetDomainType();
     if constexpr (Dim == 2) {
         if (domain == DomainType::Fluid) {
             kernel_ = CreateAcousticSensitivityKernel2D(
                 static_cast<const AcousticMaterialBase2D&>(this->Material()),
-                this->FESpace(), backend, invert_Q);
+                this->FESpace(), backend);
         } else {
             kernel_ = CreateElasticSensitivityKernel2D(
                 static_cast<const ElasticMaterialBase2D&>(this->Material()),
-                this->FESpace(), backend, invert_Q);
+                this->FESpace(), backend);
         }
     } else {
         if (domain == DomainType::Fluid) {
             kernel_ = CreateAcousticSensitivityKernel3D(
                 static_cast<const AcousticMaterialBase3D&>(this->Material()),
-                this->FESpace(), backend, invert_Q);
+                this->FESpace(), backend);
         } else {
             kernel_ = CreateElasticSensitivityKernel3D(
                 static_cast<const ElasticMaterialBase3D&>(this->Material()),
-                this->FESpace(), backend, invert_Q);
+                this->FESpace(), backend);
         }
     }
 
@@ -710,7 +694,7 @@ void AdjointSimulation<Dim>::WriteSummaryToFile(
                 << std::setprecision(2) << expense << "x\n";
         }
 
-        // Per-phase breakdown (summed over all sources processed in this Run()).
+        // Per-phase breakdown for this shot's forward+adjoint sweep.
         double t_io_total = t_io_kernel_ + t_io_synthetic_ + t_io_misfit_;
         double t_compute  = t_forward_advance_ + t_adjoint_replay_ + t_adjstep_;
         double t_ckpt_io  = t_save_ + t_restore_ + t_snapshot_;
@@ -723,7 +707,7 @@ void AdjointSimulation<Dim>::WriteSummaryToFile(
         };
 
         ofs << std::fixed << std::setprecision(3);
-        ofs << "\nPer-phase breakdown (all sources, seconds):\n";
+        ofs << "\nPer-phase breakdown (this shot, seconds):\n";
         if (!misfit_only_) {
             ofs << "  Forward (1st pass):    " << t_forward_advance_
                 << "  (" << std::setprecision(1) << pct(t_forward_advance_)
