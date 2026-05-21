@@ -34,24 +34,20 @@ using namespace mfem;
 
 template<int Dim>
 int RunSimulation(std::unique_ptr<YamlConfig> config) {
-    // Create and configure simulation
-
     double t_start_setup = MPI_Wtime();
 
-    ForwardSimulation<Dim> sim(MPI_COMM_WORLD);
-    sim.LoadConfig(std::move(config));
-
-    // Check if GPU backend is requested
-    const std::string device_str = sim.DeviceString();
+    // Device must outlive sim: sim's GPU-backed members free memory in their
+    // destructors, which the MFEM Device backend (and Umpire allocators) must
+    // still own at that point. Declare device first → destroyed last.
+    const std::string device_str =
+        config->GetDevice().empty() ? std::string("cpu") : config->GetDevice();
     const bool use_gpu = (device_str.find("cuda") != std::string::npos ||
                           device_str.find("hip") != std::string::npos);
 
     int device_id = 0;
     if (use_gpu) {
-        // Get local rank for GPU selection (works with both CUDA and HIP)
         int num_devices = Device::GetDeviceCount();
         if (num_devices > 0) {
-            // Get local rank (rank within this node)
             int rank;
             MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -66,16 +62,16 @@ int RunSimulation(std::unique_ptr<YamlConfig> config) {
         }
     }
 
-    // Setup device with specific GPU ID for this rank (or CPU if not using GPU)
     Device device(device_str, device_id);
-
-    // Debug: print device information for all ranks sequentially
 
     if (use_gpu) {
 #ifdef SEM_USE_GPU_AWARE_MPI
         Device::SetGPUAwareMPI(true);
 #endif
     }
+
+    ForwardSimulation<Dim> sim(MPI_COMM_WORLD);
+    sim.LoadConfig(std::move(config));
 
     // {
     //     int world_rank, world_size;
@@ -185,14 +181,10 @@ int RunCoupled(std::unique_ptr<YamlConfig> config) {
     // RunSimulation path — debugging prints belong in the facade itself
     // (gated by env var when needed).
     double t_start_setup = MPI_Wtime();
-    CoupledSimulationFacade<Dim> sim(MPI_COMM_WORLD);
-    sim.LoadConfig(std::move(config));
 
-    // Device selection mirrors RunSimulation: pick local-rank GPU for multi-GPU
-    // nodes, enable GPU-aware MPI when on cuda/hip.
+    // Device must outlive sim (see RunSimulation for full rationale).
     const std::string device_str =
-        sim.Config().GetDevice().empty() ? std::string("cpu")
-                                         : sim.Config().GetDevice();
+        config->GetDevice().empty() ? std::string("cpu") : config->GetDevice();
     const bool use_gpu = (device_str.find("cuda") != std::string::npos ||
                           device_str.find("hip")  != std::string::npos);
     int device_id = 0;
@@ -222,6 +214,9 @@ int RunCoupled(std::unique_ptr<YamlConfig> config) {
                          "(correct but slower)." << std::endl;
         }
     }
+
+    CoupledSimulationFacade<Dim> sim(MPI_COMM_WORLD);
+    sim.LoadConfig(std::move(config));
 
     sim.SetupFromConfig();
 
