@@ -240,9 +240,8 @@ void IsotropicAcousticMaterial::ApplyAttenuationCorrection()
     // Apply unrelaxed correction to each GLL point
     // kappa_unrelaxed = kappa_relaxed * unrelaxed_correction
     for (int i = 0; i < total; i++) {
-        // use_optimization=false: Emmerich & Korn linear least squares
         AttenuationParams params = ComputeAttenuationCoeffsCached(
-            n_units_, qkappa_data[i], fQmin, fQmax, false);
+            n_units_, qkappa_data[i], fQmin, fQmax);
         corr_data[i] = params.unrelaxed_correction;
         kappa_data[i] *= params.unrelaxed_correction;
     }
@@ -468,9 +467,8 @@ void IsotropicAcousticMaterial3D::ApplyAttenuationCorrection()
     // Apply unrelaxed correction to each GLL point
     // kappa_unrelaxed = kappa_relaxed * unrelaxed_correction
     for (int i = 0; i < total; i++) {
-        // use_optimization=false: Emmerich & Korn linear least squares (Simplex method)
         AttenuationParams params = ComputeAttenuationCoeffsCached(
-            n_units_, qkappa_data[i], fQmin, fQmax, false);
+            n_units_, qkappa_data[i], fQmin, fQmax);
         corr_data[i] = params.unrelaxed_correction;
         kappa_data[i] *= params.unrelaxed_correction;
     }

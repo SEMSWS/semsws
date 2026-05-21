@@ -295,11 +295,10 @@ void IsotropicElasticMaterial::ApplyAttenuationCorrection()
     // kappa_unrelaxed = kappa_relaxed * unrelaxed_correction
     // mu_unrelaxed = mu_relaxed * unrelaxed_correction
     for (int i = 0; i < total; i++) {
-        // use_optimization=false: Emmerich & Korn linear least squares
         AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(
-            n_units_, qkappa_data[i], fQmin, fQmax, false);
+            n_units_, qkappa_data[i], fQmin, fQmax);
         AttenuationParams params_mu = ComputeAttenuationCoeffsCached(
-            n_units_, qmu_data[i], fQmin, fQmax, false);
+            n_units_, qmu_data[i], fQmin, fQmax);
 
         corr_kappa_data[i] = params_kappa.unrelaxed_correction;
         corr_mu_data[i]    = params_mu.unrelaxed_correction;
@@ -532,11 +531,10 @@ void IsotropicElasticMaterial3D::ApplyAttenuationCorrection()
     // kappa_unrelaxed = kappa_relaxed * unrelaxed_correction
     // mu_unrelaxed = mu_relaxed * unrelaxed_correction
     for (int i = 0; i < total; i++) {
-        // use_optimization=false: Emmerich & Korn linear least squares
         AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(
-            n_units_, qkappa_data[i], fQmin, fQmax, false);
+            n_units_, qkappa_data[i], fQmin, fQmax);
         AttenuationParams params_mu = ComputeAttenuationCoeffsCached(
-            n_units_, qmu_data[i], fQmin, fQmax, false);
+            n_units_, qmu_data[i], fQmin, fQmax);
 
         corr_kappa_data[i] = params_kappa.unrelaxed_correction;
         corr_mu_data[i]    = params_mu.unrelaxed_correction;

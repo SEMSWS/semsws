@@ -51,8 +51,8 @@ void GeneralizedZener2D::EnableAttenuation(
                 // Compute attenuation coefficients using cached version for performance
                 // Note: unrelaxed correction is now applied in material class
                 // via ApplyAttenuationCorrection() before operator setup
-                AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax, false);
-                AttenuationParams params_mu = ComputeAttenuationCoeffsCached(n_sls, Qm, fQmin, fQmax, false);
+                AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax);
+                AttenuationParams params_mu = ComputeAttenuationCoeffsCached(n_sls, Qm, fQmin, fQmax);
 
                 // Compute normalization sums (sum of tau_eps/tau_sig)
                 real_t sum_beta_kappa = 0.0, sum_beta_mu = 0.0;
@@ -148,8 +148,8 @@ void GeneralizedZener3D::EnableAttenuation(
                     // Compute attenuation coefficients using cached version for performance
                     // Note: unrelaxed correction is now applied in material class
                     // via ApplyAttenuationCorrection() before operator setup
-                    AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax, false);
-                    AttenuationParams params_mu = ComputeAttenuationCoeffsCached(n_sls, Qm, fQmin, fQmax, false);
+                    AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax);
+                    AttenuationParams params_mu = ComputeAttenuationCoeffsCached(n_sls, Qm, fQmin, fQmax);
 
                     // Compute normalization sums (sum of tau_eps/tau_sig)
                     real_t sum_beta_kappa = 0.0, sum_beta_mu = 0.0;
@@ -242,7 +242,7 @@ void GeneralizedZenerAcoustic2D::EnableAttenuation(
                 // Compute attenuation coefficients using cached version for performance
                 // Note: unrelaxed correction is now applied in material class
                 // via ApplyAttenuationCorrection() before operator setup
-                AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax, false);
+                AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax);
 
                 // Compute normalization sum (sum of tau_eps/tau_sig) - same as viscoelastic
                 real_t sum_beta_kappa = 0.0;
@@ -327,7 +327,7 @@ void GeneralizedZenerAcoustic3D::EnableAttenuation(
                     // Compute attenuation coefficients using cached version for performance
                     // Note: unrelaxed correction is now applied in material class
                     // via ApplyAttenuationCorrection() before operator setup
-                    AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax, false);
+                    AttenuationParams params_kappa = ComputeAttenuationCoeffsCached(n_sls, Qk, fQmin, fQmax);
 
                     // Compute normalization sum (sum of tau_eps/tau_sig) - same as viscoelastic
                     real_t sum_beta_kappa = 0.0;

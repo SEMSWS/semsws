@@ -46,6 +46,11 @@ if(MFEM_VERSION AND MFEM_VERSION VERSION_LESS 4.9)
         "SEMSWS requires MFEM >= 4.9. Found MFEM ${MFEM_VERSION}.")
 endif()
 
+if(MFEM_USE_UMPIRE)
+    find_package(umpire CONFIG REQUIRED)
+    message(STATUS "umpire via find_package: ${umpire_DIR}")
+endif()
+
 # =============================================================================
 # Detect MFEM precision (single or double)
 # MFEM exports MFEM_USE_SINGLE and MFEM_USE_DOUBLE from MFEMConfig.cmake

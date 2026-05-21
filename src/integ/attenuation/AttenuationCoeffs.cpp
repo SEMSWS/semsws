@@ -3,16 +3,13 @@
  * @brief Attenuation coefficient computation for generalized Zener body
  *
  * Computes relaxation parameters (tau_epsilon, tau_sigma) for the
- * Generalized Zener Body viscoelastic model. Two methods are available:
+ * Generalized Zener Body viscoelastic model via Emmerich & Korn linear
+ * least squares: log-spaced relaxation frequencies, weights from normal
+ * equations solved with MFEM DenseMatrix.
+ * Reference: Emmerich & Korn, Geophysics 52, 1252-1264 (1987)
  *
- * Method: Emmerich & Korn linear least squares
- *   Fixes relaxation frequencies at log-spaced positions, then solves
- *   for optimal weights via normal equations using MFEM DenseMatrix.
- *   Reference: Emmerich & Korn, Geophysics 52, 1252-1264 (1987)
- *
- * NOTE: All internal computations use double precision for numerical accuracy.
- * The public interface converts to/from real_t for compatibility with
- * single precision builds.
+ * Internal math is in double precision; the public interface converts
+ * to/from real_t for single-precision builds.
  */
 
 #include "integ/attenuation/AttenuationCoeffs.hpp"
@@ -133,8 +130,7 @@ AttenuationParams ComputeAttenuationCoeffs(
     int N,
     real_t Qref,
     real_t f_min,
-    real_t f_max,
-    bool use_optimization)
+    real_t f_max)
 {
     if (N < 1) {
         throw std::invalid_argument("Number of mechanisms N must be >= 1");
@@ -145,8 +141,6 @@ AttenuationParams ComputeAttenuationCoeffs(
     if (f_min <= 0 || f_max <= 0 || f_min >= f_max) {
         throw std::invalid_argument("Invalid frequency range");
     }
-
-    (void)use_optimization;  // Currently only E&K is active
 
     AttenuationParams result;
 
@@ -202,12 +196,11 @@ AttenuationParams ComputeAttenuationCoeffs(
 AttenuationParams ComputeAttenuationCoeffsFromF0(
     int N,
     real_t Qref,
-    real_t f0,
-    bool use_optimization)
+    real_t f0)
 {
     real_t f_min = 0.1 * f0;
     real_t f_max = 10.0 * f0;
-    return ComputeAttenuationCoeffs(N, Qref, f_min, f_max, use_optimization);
+    return ComputeAttenuationCoeffs(N, Qref, f_min, f_max);
 }
 
 // ============================================================================
@@ -255,7 +248,7 @@ CacheKey MakeKey(int N, real_t Qref, real_t f_min, real_t f_max) {
 
 
 AttenuationParams ComputeAttenuationCoeffsCached(
-    int N, real_t Qref, real_t f_min, real_t f_max, bool use_optimization)
+    int N, real_t Qref, real_t f_min, real_t f_max)
 {
     CacheKey key = MakeKey(N, Qref, f_min, f_max);
 
@@ -266,7 +259,7 @@ AttenuationParams ComputeAttenuationCoeffsCached(
     }
 
     g_cache_misses++;
-    AttenuationParams result = ComputeAttenuationCoeffs(N, Qref, f_min, f_max, use_optimization);
+    AttenuationParams result = ComputeAttenuationCoeffs(N, Qref, f_min, f_max);
 
     if (g_cache.size() < MAX_CACHE_SIZE) {
         g_cache[key] = result;
@@ -292,7 +285,7 @@ std::pair<size_t, size_t> GetAttenuationCacheStats() {
 void WriteQApproximationFile(
     const std::string& filepath,
     int N, real_t Qkappa, real_t Qmu,
-    real_t f0, bool use_blanch)
+    real_t f0)
 {
     real_t f_min = 0.1 * f0;
     real_t f_max = 10.0 * f0;
@@ -303,14 +296,14 @@ void WriteQApproximationFile(
     double f_max_d = static_cast<double>(f_max);
 
     EKResult ek_k = EmmerichKornLeastSquares(N, Q_k, f_min_d, f_max_d);
-    AttenuationParams params_k = ComputeAttenuationCoeffs(N, Qkappa, f_min, f_max, use_blanch);
+    AttenuationParams params_k = ComputeAttenuationCoeffs(N, Qkappa, f_min, f_max);
 
     bool has_mu = (Qmu > 0);
     EKResult ek_m;
     AttenuationParams params_m;
     if (has_mu) {
         ek_m = EmmerichKornLeastSquares(N, Q_m, f_min_d, f_max_d);
-        params_m = ComputeAttenuationCoeffs(N, Qmu, f_min, f_max, use_blanch);
+        params_m = ComputeAttenuationCoeffs(N, Qmu, f_min, f_max);
     }
 
     // Frequency range: f_min to f_max
