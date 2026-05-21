@@ -10,6 +10,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(SEMSWS LANGUAGES C CXX VERSION 0.1.0)
 
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
+if(NOT DEFINED CMAKE_INSTALL_RPATH)
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+
 # Default to Release when the user did not pick a build type explicitly.
 # Without this CMake leaves CMAKE_BUILD_TYPE empty, which means no -O3 and
 # no -g — the resulting binary is several times slower than a real Release
