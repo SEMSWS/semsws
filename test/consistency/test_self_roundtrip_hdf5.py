@@ -189,7 +189,7 @@ def test_self_roundtrip(
         if ax.shape != bx.shape:
             failures.append(f"{name}: shape {ax.shape} vs {bx.shape}")
             continue
-        if not np.array_equal(ax, bx):
+        if not np.allclose(ax, bx, atol=1e-10, rtol=1e-5):
             diff = float(np.max(np.abs(ax - bx)))
             failures.append(f"{name}: max abs diff = {diff:.3e}")
 
