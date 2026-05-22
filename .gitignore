@@ -34,6 +34,7 @@ venv/
 *.msh
 *.inp
 *.tec
+!test/coupling/**/probe.msh
 
 # Archive files / media (produced locally)
 *.zip
