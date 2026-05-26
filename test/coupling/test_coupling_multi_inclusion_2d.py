@@ -93,8 +93,8 @@ def main_exe(build_dir: Path) -> Path:
 def gmsh_available() -> None:
     try:
         import gmsh  # noqa: F401
-    except ImportError:
-        pytest.skip("gmsh python module not installed")
+    except (ImportError, OSError) as e:
+        pytest.skip(f"gmsh python module unavailable: {e}")
 
 
 def _write_yaml(yaml_path: Path, mesh_name: str) -> None:
