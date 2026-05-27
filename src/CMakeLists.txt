@@ -716,6 +716,14 @@ set(SEM_TOOL_SOURCES
     tools/refine_mesh.cpp
     tools/evaluate_mesh.cpp
     tools/sem_viz.cpp
+    tools/sum_kernels.cpp
+    tools/mask.cpp
+    tools/precondition_gradient.cpp
+    tools/clip_field.cpp
+    tools/scale_field.cpp
+    tools/lbfgs_direction.cpp
+    tools/update_model.cpp
+    tools/max_abs.cpp
 )
 if(SEM_USE_CUDA)
     set_source_files_properties(${SEM_TOOL_SOURCES} PROPERTIES LANGUAGE CUDA)
@@ -734,6 +742,41 @@ target_link_libraries(combine_mesh PRIVATE sem)
 # sem_viz — offline .bp → paraview/glvis/gmt converter
 add_executable(sem_viz tools/sem_viz.cpp)
 target_link_libraries(sem_viz PRIVATE sem)
+
+# =============================================================================
+# FWI gradient / optimizer post-processing tools
+# =============================================================================
+# Per-shot kernel reduction
+add_executable(sum_kernels tools/sum_kernels.cpp)
+target_link_libraries(sum_kernels PRIVATE sem)
+
+# Boundary / attribute masking of MaterialFields
+add_executable(mask tools/mask.cpp)
+target_link_libraries(mask PRIVATE sem)
+
+# Pseudo-Hessian preconditioning
+add_executable(precondition_gradient tools/precondition_gradient.cpp)
+target_link_libraries(precondition_gradient PRIVATE sem)
+
+# Outlier clipping (percentile / absolute / of_max)
+add_executable(clip_field tools/clip_field.cpp)
+target_link_libraries(clip_field PRIVATE sem)
+
+# Scalar scale of a MaterialField
+add_executable(scale_field tools/scale_field.cpp)
+target_link_libraries(scale_field PRIVATE sem)
+
+# L-BFGS direction (with secant-pair history on disk)
+add_executable(lbfgs_direction tools/lbfgs_direction.cpp)
+target_link_libraries(lbfgs_direction PRIVATE sem)
+
+# Steepest descent / accepted-step model update with bounds
+add_executable(update_model tools/update_model.cpp)
+target_link_libraries(update_model PRIVATE sem)
+
+# Max |field| reduction (writes scalar to stdout / file)
+add_executable(max_abs tools/max_abs.cpp)
+target_link_libraries(max_abs PRIVATE sem)
 
 # Fluid-solid coupling probe executables — dev-only tools consumed by
 # the setup-phase pytest modules (test_facade_setup, test_interface_dof,
@@ -776,6 +819,8 @@ set(SEMSWS_BIN_TARGETS
     semsws
     partition_mesh refine_mesh evaluate_mesh semsws_export_model
     smooth_kernel combine_mesh sem_viz
+    sum_kernels mask precondition_gradient clip_field scale_field
+    lbfgs_direction update_model max_abs
 )
 
 if(SEM_BUILD_COUPLING_PROBES)
