@@ -16,7 +16,7 @@
  *   mpirun -np N smooth_kernel \
  *       --config sim.yaml \
  *       --input kernel.bp --output kernel_smooth.bp \
- *       --var --vp vp.bp --alpha 1.0 --freq 10.0
+ *       --var --vref vp.bp --alpha 1.0 --freq 10.0
  *
  *   # Constant anisotropic smoothing
  *   mpirun -np N smooth_kernel \
@@ -28,7 +28,7 @@
  *   mpirun -np N smooth_kernel \
  *       --config sim.yaml \
  *       --input kernel.bp --output kernel_smooth.bp \
- *       --var --vp vp.bp --alpha-x 1.0 --alpha-y 3.0 --freq 10.0
+ *       --var --vref vp.bp --alpha-x 1.0 --alpha-y 3.0 --freq 10.0
  */
 
 #include "io/ADIOS2IO.hpp"
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     Hypre::Init();
 
     // Parse arguments
-    std::string config_file, input_file, output_file, vp_file;
+    std::string config_file, input_file, output_file, vref_file;
     std::string device_str = "cpu";
     real_t alpha = -1.0, freq = -1.0;
     real_t alpha_x = -1.0, alpha_y = -1.0;
@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--config" && i + 1 < argc) config_file = argv[++i];
         else if (arg == "--input" && i + 1 < argc) input_file = argv[++i];
         else if (arg == "--output" && i + 1 < argc) output_file = argv[++i];
-        else if (arg == "--vp" && i + 1 < argc) vp_file = argv[++i];
+        else if (arg == "--vref" && i + 1 < argc) vref_file = argv[++i];
         else if (arg == "--alpha" && i + 1 < argc) alpha = std::atof(argv[++i]);
         else if (arg == "--alpha-x" && i + 1 < argc) alpha_x = std::atof(argv[++i]);
         else if (arg == "--alpha-y" && i + 1 < argc) alpha_y = std::atof(argv[++i]);
@@ -104,8 +104,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Usage: smooth_kernel --config C.yaml --input X.bp --output Y.bp\n"
                       << "  --constant --alpha S              (isotropic, sigma=S meters)\n"
                       << "  --constant --alpha-x Sx --alpha-y Sy  (anisotropic, meters)\n"
-                      << "  --var --vp V.bp --alpha A --freq F    (isotropic, sigma=A*Vp/F)\n"
-                      << "  --var --vp V.bp --alpha-x Ax --alpha-y Ay --freq F (anisotropic)\n"
+                      << "  --var --vref V.bp --alpha A --freq F  (isotropic, sigma=A*Vref/F)\n"
+                      << "  --var --vref V.bp --alpha-x Ax --alpha-y Ay --freq F (anisotropic)\n"
                       << "  [--device cpu|cuda]\n";
         }
         return 1;
@@ -139,9 +139,9 @@ int main(int argc, char* argv[]) {
 
     // Validate --var mode requirements
     if (mode_var) {
-        if (vp_file.empty()) {
+        if (vref_file.empty()) {
             if (Mpi::Root()) {
-                std::cerr << "Error: --var mode requires --vp\n";
+                std::cerr << "Error: --var mode requires --vref\n";
             }
             return 1;
         }
@@ -287,14 +287,14 @@ int main(int argc, char* argv[]) {
     std::unique_ptr<ParGridFunction> vp_gf_ptr;
     if (mode_var) {
         if (Mpi::Root()) {
-            std::cout << "Loading Vp model: " << vp_file << std::endl;
+            std::cout << "Loading velocity reference: " << vref_file << std::endl;
         }
         vp_gf_ptr = std::make_unique<ParGridFunction>(&fes);
         if (dim == 2) {
-            MaterialField vp_field = LoadFieldBP(vp_file, "data", comm);
+            MaterialField vp_field = LoadFieldBP(vref_file, "data", comm);
             vp_field.ToParGridFunction(fes, *vp_gf_ptr);
         } else {
-            MaterialField3D vp_field = LoadFieldBP3D(vp_file, "data", comm);
+            MaterialField3D vp_field = LoadFieldBP3D(vref_file, "data", comm);
             vp_field.ToParGridFunction(fes, *vp_gf_ptr);
         }
     }
