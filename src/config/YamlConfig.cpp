@@ -1190,16 +1190,24 @@ void YamlConfig::Validate() {
         return;
     }
 
-    // receivers.type required (parent-level only)
-    if (!receivers["type"]) {
-        error_msg_ = "Missing required parameter: receivers.type";
+    // receivers.type is required UNLESS sources.file is set — in that case
+    // the per-receiver `@types` attribute in the HDF5 bundle is the canonical
+    // source of truth and an empty parent default is allowed (the runtime
+    // reader aborts cleanly when a given receiver has neither).
+    const bool has_sources_file =
+        root_["sources"] && root_["sources"]["file"];
+    if (!receivers["type"] && !has_sources_file) {
+        error_msg_ = "Missing required parameter: receivers.type "
+                     "(or set sources.file to inherit types from the HDF5 bundle)";
         valid_ = false;
         return;
     }
-
-    std::vector<std::string> types = receivers["type"].as<std::vector<std::string>>();
-    for (const auto& type_str : types) {
-        auto rec_type = StringToReceiverType(type_str); // validate - will be abort if invalid type
+    if (receivers["type"]) {
+        std::vector<std::string> types =
+            receivers["type"].as<std::vector<std::string>>();
+        for (const auto& type_str : types) {
+            auto rec_type = StringToReceiverType(type_str); // validate
+        }
     }
 
     // receivers.output section
@@ -2358,14 +2366,18 @@ void YamlConfig::ParseReceivers() const {
         return;
     }
 
+    // Optional: when sources.file is set, receivers may inherit types from
+    // the HDF5 per-receiver `@types` attribute (validated downstream).
     std::vector<std::string> default_types;
     YAML::Node type_node = root_["receivers"]["type"];
-    if (type_node.IsSequence()) {
-        for (size_t i = 0; i < type_node.size(); i++) {
-            default_types.push_back(type_node[i].as<std::string>());
+    if (type_node) {
+        if (type_node.IsSequence()) {
+            for (size_t i = 0; i < type_node.size(); i++) {
+                default_types.push_back(type_node[i].as<std::string>());
+            }
+        } else {
+            default_types.push_back(type_node.as<std::string>());
         }
-    } else {
-        default_types.push_back(type_node.as<std::string>());
     }
     int dim = GetDimension();
 

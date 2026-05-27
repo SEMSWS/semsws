@@ -584,6 +584,11 @@ HDF5SourceReceiverReader::ReadReceivers(
             validate_types(per_recv_types_raw, ctx);  // domain-side validator
             rec.types = std::move(per_recv_types_raw);
         } else {
+            if (default_types.empty()) {
+                Abort("HDF5 source/receiver: " + ctx + " has no `@types` "
+                      "attribute and YAML provides no `receivers.type` "
+                      "fallback — set one or the other");
+            }
             rec.types = default_types;
         }
         rec.weight = real_t{1.0};
