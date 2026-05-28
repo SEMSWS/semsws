@@ -115,15 +115,23 @@ class RunConfig:
 def _resolve_binary(raw: object) -> Path:
     """Resolve `run.binary` to an absolute Path.
 
-    Accepts:
-      - absolute path → used as-is (expanding `~`),
-      - relative path with separators → resolved against CWD,
-      - bare command name (e.g. `semsws`) → resolved via `$PATH`
-        (handy with `spack load semsws` / module systems).
+    Priority:
+      1. $SEMSWS_BIN env var (always wins; handy for self-compiled trees)
+      2. absolute path → used as-is (expanding `~`),
+      3. relative path with separators → resolved against CWD,
+      4. bare command name (e.g. `semsws`) → resolved via `$PATH`
+         (handy with `spack load semsws` / module systems).
 
     Bare names that are not on PATH raise FileNotFoundError so config
     typos surface immediately instead of leaking into ToolPaths discovery.
     """
+    env = os.environ.get("SEMSWS_BIN")
+    if env:
+        p = Path(env).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"$SEMSWS_BIN={env} is not a file")
+        return p
+
     s = str(raw)
     if not s:
         raise ValueError("run.binary must be a non-empty string")
@@ -135,7 +143,7 @@ def _resolve_binary(raw: object) -> Path:
     if found is None:
         raise FileNotFoundError(
             f"run.binary={s!r} is a bare command not found on $PATH; "
-            f"either load it (e.g. `spack load semsws`) or set an "
-            f"absolute / relative path in the config"
+            f"either load it (e.g. `spack load semsws`), set $SEMSWS_BIN, "
+            f"or write an absolute / relative path in the config"
         )
     return Path(found)

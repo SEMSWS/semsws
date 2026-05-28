@@ -24,11 +24,11 @@ from semsws_driver.io.hdf5_v2 import (
 def _find_binary() -> Path | None:
     """Locate `semsws` for smoke tests.
 
-    Honours $SEMSWS_BINARY if set, else `which semsws` (e.g. after
+    Honours $SEMSWS_BIN if set, else `which semsws` (e.g. after
     `spack load semsws`). Tests skip when nothing is found rather than
     using a hard-coded developer path.
     """
-    env = os.environ.get("SEMSWS_BINARY")
+    env = os.environ.get("SEMSWS_BIN")
     if env:
         p = Path(env).expanduser()
         return p if p.is_file() else None
