@@ -114,8 +114,11 @@ spack:
       require: '%gcc'
     metis:
       require: '%gcc'
+    # ADIOS2 2.12+ needs -lstdc++fs on GCC < 9; ES uses GCC 8.5 → pin <=2.11.
     adios2:
-      require: '%gcc'
+      require:
+      - '%gcc'
+      - '@:2.11'
     netcdf-c:       { require: '%gcc' }
     netcdf-cxx4:    { require: '%gcc' }
     netcdf-fortran: { require: '%gcc' }
@@ -179,8 +182,11 @@ spack:
       require: '%gcc'
     metis:
       require: '%gcc'
+    # ADIOS2 2.12+ needs -lstdc++fs on GCC < 9; ES uses GCC 8.5 → pin <=2.11.
     adios2:
-      require: '%gcc'
+      require:
+      - '%gcc'
+      - '@:2.11'
     netcdf-c:       { require: '%gcc' }
     netcdf-cxx4:    { require: '%gcc' }
     netcdf-fortran: { require: '%gcc' }
