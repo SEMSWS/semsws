@@ -63,7 +63,7 @@ The `^adios2 ldlibs="-lstdc++fs"` is needed because ADIOS2's `bpls` /
 For CPU, swap to `load_cpu.sh` + `packages_cpu.yaml` and run:
 
 ```bash
-spack install semsws@main precision=single %gcc ^adios2 ldlibs="-lstdc++fs"
+spack install semsws@main precision=single ^hypre@2.33 ^adios2 ldlibs="-lstdc++fs" %gcc
 ```
 
 ## (B) GPU and CPU side by side (Spack environment)
@@ -211,7 +211,7 @@ spack:
   # `^adios2 ldlibs="-lstdc++fs"` clause forces the compiler-wrapper to add
   # it to every adios2 link command.
   specs:
-  - semsws@main precision=single %gcc ^adios2 ldlibs="-lstdc++fs"
+  - semsws@main precision=single ^hypre@2.33 ^adios2 ldlibs="-lstdc++fs" %gcc
 
   concretizer:
     unify: true
