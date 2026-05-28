@@ -6,6 +6,8 @@ from the per-shot YAML before passing it to SEMSWS C++.
 
 from __future__ import annotations
 
+import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional
@@ -85,7 +87,7 @@ class RunConfig:
         env = {str(k): str(v) for k, v in (d.get("env") or {}).items()}
 
         return cls(
-            binary=Path(str(d["binary"])).expanduser(),
+            binary=_resolve_binary(d["binary"]),
             scheduler=scheduler,    # type: ignore[arg-type]
             launcher=launcher,      # type: ignore[arg-type]
             ranks_per_shot=ranks,
@@ -108,3 +110,32 @@ class RunConfig:
             "pbs": "mpirun",
             "lsf": "mpirun",
         }[self.scheduler]
+
+
+def _resolve_binary(raw: object) -> Path:
+    """Resolve `run.binary` to an absolute Path.
+
+    Accepts:
+      - absolute path → used as-is (expanding `~`),
+      - relative path with separators → resolved against CWD,
+      - bare command name (e.g. `semsws`) → resolved via `$PATH`
+        (handy with `spack load semsws` / module systems).
+
+    Bare names that are not on PATH raise FileNotFoundError so config
+    typos surface immediately instead of leaking into ToolPaths discovery.
+    """
+    s = str(raw)
+    if not s:
+        raise ValueError("run.binary must be a non-empty string")
+    p = Path(s).expanduser()
+    has_sep = ("/" in s) or ("\\" in s)
+    if has_sep:
+        return p if p.is_absolute() else p.resolve()
+    found = shutil.which(s)
+    if found is None:
+        raise FileNotFoundError(
+            f"run.binary={s!r} is a bare command not found on $PATH; "
+            f"either load it (e.g. `spack load semsws`) or set an "
+            f"absolute / relative path in the config"
+        )
+    return Path(found)

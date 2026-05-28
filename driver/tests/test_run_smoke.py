@@ -7,6 +7,7 @@ finish in well under 10 s on any laptop.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import h5py
@@ -20,16 +21,19 @@ from semsws_driver.io.hdf5_v2 import (
     ReceiverEntry, ShotEntry, SourceEntry, write_v2,
 )
 
-BINARY_CANDIDATES = [
-    Path("/home/kota/program_ubuntu/SEMSWS/build/src/semsws"),
-]
-
-
 def _find_binary() -> Path | None:
-    for p in BINARY_CANDIDATES:
-        if p.exists():
-            return p
-    return None
+    """Locate `semsws` for smoke tests.
+
+    Honours $SEMSWS_BINARY if set, else `which semsws` (e.g. after
+    `spack load semsws`). Tests skip when nothing is found rather than
+    using a hard-coded developer path.
+    """
+    env = os.environ.get("SEMSWS_BINARY")
+    if env:
+        p = Path(env).expanduser()
+        return p if p.is_file() else None
+    found = shutil.which("semsws")
+    return Path(found) if found else None
 
 
 @pytest.fixture
