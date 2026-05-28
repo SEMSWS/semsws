@@ -19,15 +19,18 @@ from .run_config import RunConfig
 
 
 def load_template(path: Path) -> dict:
-    """Load and return the user template as a YAML dict."""
+    """Load and return the user template as a YAML dict.
+
+    `run:` is optional. Callers that need a RunConfig (single-shot driver)
+    should invoke `extract_run_config(template)` which validates presence.
+    Multi-config callers (fwi-driver) supply `run:` from a separate file.
+    """
     with Path(path).open("r") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
         raise ValueError(
             f"{path}: top-level YAML must be a mapping, got {type(data).__name__}"
         )
-    if "run" not in data:
-        raise ValueError(f"{path}: missing required `run:` section")
     return data
 
 

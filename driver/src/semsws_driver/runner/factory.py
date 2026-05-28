@@ -29,19 +29,19 @@ def make_runner(rc: RunConfig):
         return LocalRunner(
             semsws_binary=str(rc.binary),
             ranks_per_shot=rc.ranks_per_shot,
-            cpus_per_rank=1,                # OMP_NUM_THREADS via run.env
+            cpus_per_rank=rc.cpus_per_rank,
             max_concurrent_shots=rc.shots_per_job,
             gpus_per_shot=gpus_per_shot,
             device_kind=device_kind,
-            numa_aware=False,
+            numa_aware=rc.numa_aware,
         )
     return MpiDirectRunner(
         semsws_binary=str(rc.binary),
         ranks_per_shot=rc.ranks_per_shot,
-        cpus_per_rank=1,
+        cpus_per_rank=rc.cpus_per_rank,
         gpus_per_shot=gpus_per_shot,
         max_concurrent_shots=rc.shots_per_job,
         device_kind=device_kind,
-        numa_aware=False,
+        numa_aware=rc.numa_aware,
         force_scheduler=rc.scheduler,
     )

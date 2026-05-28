@@ -46,12 +46,18 @@ def test_load_template(tmp_path: Path, user_template: dict):
     assert loaded["run"]["binary"] == "/path/to/semsws"
 
 
-def test_load_template_rejects_missing_run(tmp_path: Path, user_template: dict):
+def test_load_template_allows_missing_run(tmp_path: Path, user_template: dict):
     user_template.pop("run")
     p = tmp_path / "config.yaml"
     p.write_text(yaml.safe_dump(user_template))
+    loaded = load_template(p)
+    assert "run" not in loaded
+
+
+def test_extract_run_config_requires_run(user_template: dict):
+    user_template.pop("run")
     with pytest.raises(ValueError, match="run"):
-        load_template(p)
+        extract_run_config(user_template)
 
 
 def test_extract_run_config(user_template: dict):

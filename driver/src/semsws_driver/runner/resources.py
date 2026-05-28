@@ -457,6 +457,62 @@ def _probe_gpus_local() -> int:
 # NUMA topology
 # ---------------------------------------------------------------------------
 
+def _build_cpu_blocks(
+    *,
+    cpus_per_node: int,
+    cpus_per_slot: int,
+    cpu_to_numa: dict[int, int],
+    numa_aware: bool,
+) -> list[list[int]]:
+    """Split per-node CPUs into per-slot CPU id blocks.
+
+    numa_aware=False (or no NUMA topology) → contiguous blocks
+    [0..M), [M..2M), … of size `cpus_per_slot`.
+
+    numa_aware=True → blocks are packed within a single NUMA domain.
+    Each NUMA's CPUs are taken in order, and a block crosses a NUMA
+    boundary only if `cpus_per_slot` exceeds one NUMA's size (in which
+    case multi-NUMA blocks are allowed but warned).
+    """
+    if not numa_aware or not cpu_to_numa:
+        n_blocks = cpus_per_node // cpus_per_slot if cpus_per_slot > 0 else 0
+        return [
+            list(range(j * cpus_per_slot, (j + 1) * cpus_per_slot))
+            for j in range(n_blocks)
+        ]
+
+    # Group CPUs by NUMA preserving CPU-id order within each NUMA.
+    by_numa: dict[int, list[int]] = {}
+    for cpu_id in sorted(c for c in cpu_to_numa.keys() if c < cpus_per_node):
+        by_numa.setdefault(cpu_to_numa[cpu_id], []).append(cpu_id)
+
+    if not by_numa:
+        return []
+
+    blocks: list[list[int]] = []
+    if all(len(cpus) >= cpus_per_slot for cpus in by_numa.values()):
+        # Whole-shot fits in a single NUMA: pack within each NUMA.
+        for numa_id in sorted(by_numa.keys()):
+            cpus = by_numa[numa_id]
+            n = len(cpus) // cpus_per_slot
+            for j in range(n):
+                blocks.append(cpus[j * cpus_per_slot:(j + 1) * cpus_per_slot])
+    else:
+        # Slot exceeds one NUMA: fall back to contiguous, warn.
+        log.warning(
+            "numa_aware=True but cpus_per_slot=%d exceeds NUMA domain size "
+            "(max=%d); falling back to NUMA-crossing slots.",
+            cpus_per_slot,
+            max(len(c) for c in by_numa.values()),
+        )
+        n = cpus_per_node // cpus_per_slot
+        blocks = [
+            list(range(j * cpus_per_slot, (j + 1) * cpus_per_slot))
+            for j in range(n)
+        ]
+    return blocks
+
+
 def read_cpu_to_numa() -> dict[int, int]:
     """Parse `lscpu -e=CPU,NODE` to map absolute CPU id -> NUMA node id."""
     if shutil.which("lscpu") is None:
@@ -541,12 +597,14 @@ class ResourcePool:
 
         if nodes_per_shot == 1:
             # ---- single-node carving (multiple slots may fit per node) ----
-            spr = allocation.ranks_per_node // ranks_per_shot
-            spc = (
-                allocation.cpus_per_node // cpus_per_slot_per_node
-                if allocation.cpus_per_node > 0
-                else spr
+            cpu_blocks_per_node = _build_cpu_blocks(
+                cpus_per_node=allocation.cpus_per_node,
+                cpus_per_slot=cpus_per_slot_per_node,
+                cpu_to_numa=cpu_to_numa,
+                numa_aware=numa_aware,
             )
+            spr = allocation.ranks_per_node // ranks_per_shot
+            spc = len(cpu_blocks_per_node)
             if gpus_per_shot > 0:
                 spg = allocation.gpus_per_node // gpus_per_shot
                 slots_per_node = min(spr, spc, spg)
@@ -555,12 +613,13 @@ class ResourcePool:
             if slots_per_node <= 0:
                 raise RuntimeError(
                     "no slots fit in the allocation; check ranks_per_shot / "
-                    "gpus_per_shot / cpus_per_rank vs allocation"
+                    "gpus_per_shot / cpus_per_rank vs allocation "
+                    f"(numa_aware={numa_aware}, cpus_per_slot={cpus_per_slot_per_node}, "
+                    f"cpus_per_node={allocation.cpus_per_node})"
                 )
             for node in allocation.nodes:
                 for j in range(slots_per_node):
-                    cpu_ids = list(range(j * cpus_per_slot_per_node,
-                                          (j + 1) * cpus_per_slot_per_node))
+                    cpu_ids = cpu_blocks_per_node[j]
                     gpu_ids = (
                         list(range(j * gpus_per_shot, (j + 1) * gpus_per_shot))
                         if gpus_per_shot > 0 else []

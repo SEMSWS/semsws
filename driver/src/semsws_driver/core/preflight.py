@@ -170,6 +170,7 @@ def _write_preflight_yaml(
     return render_shot_yaml(
         template=template, shot_id=shot_id_for_preflight,
         inputs_h5=inputs_h5, out_path=out,
+        output_directory=layout.shared_model_dir,
     )
 
 

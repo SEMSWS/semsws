@@ -344,17 +344,27 @@ void YamlConfig::Validate() {
     valid_ = true;
     error_msg_.clear();
 
-    // Strict-key validation on the top-level document. Any key not in
-    // this set is a typo or removed-legacy form and must abort rather
-    // than silently pass through. Add new top-level keys here when
-    // introducing them; do NOT accept unknown siblings.
-    if (!CheckKnownKeys(root_, {
+    // Root-level keys are warn-only: external drivers (e.g. semsws-driver /
+    // semsws-fwi-driver) inject their own top-level blocks (`run`, …) into the
+    // same YAML and we want the C++ binary to ignore them rather than fail.
+    // Typos in actual SEMSWS sections are still caught by the strict-key
+    // checks on each nested block below.
+    {
+        const std::set<std::string> known_root = {
             "name",
             "simulation", "mesh", "material", "boundary",
             "sources", "receivers", "device", "inversion", "vis"
-        }, "root", error_msg_)) {
-        valid_ = false;
-        return;
+        };
+        if (root_ && root_.IsMap()) {
+            for (const auto& kv : root_) {
+                const std::string key = kv.first.as<std::string>();
+                if (!known_root.count(key)) {
+                    std::cerr << "[YamlConfig] warning: ignoring unknown root key `"
+                              << key << "` (allowed: name, simulation, mesh, material, "
+                              "boundary, sources, receivers, device, inversion, vis)\n";
+                }
+            }
+        }
     }
 
     if (!root_["name"]) {

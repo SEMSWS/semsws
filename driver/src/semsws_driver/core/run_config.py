@@ -29,8 +29,10 @@ class RunConfig:
     scheduler: Scheduler = "local"
     launcher: Optional[Launcher] = None
     ranks_per_shot: int = 1
+    cpus_per_rank: int = 1
     device_kind: DeviceKind = "cpu"
     shots_per_job: int = 1
+    numa_aware: bool = False
     binding: BindingBlock = field(default_factory=BindingBlock)
     env: dict[str, str] = field(default_factory=dict)
 
@@ -59,9 +61,13 @@ class RunConfig:
         ranks = int(d.get("ranks_per_shot", 1))
         if ranks < 1:
             raise ValueError("run.ranks_per_shot must be >= 1")
+        cpus_per_rank = int(d.get("cpus_per_rank", 1))
+        if cpus_per_rank < 1:
+            raise ValueError("run.cpus_per_rank must be >= 1")
         shots_per_job = int(d.get("shots_per_job", 1))
         if shots_per_job < 1:
             raise ValueError("run.shots_per_job must be >= 1")
+        numa_aware = bool(d.get("numa_aware", False))
 
         b = d.get("binding", {}) or {}
         if not isinstance(b, dict):
@@ -83,8 +89,10 @@ class RunConfig:
             scheduler=scheduler,    # type: ignore[arg-type]
             launcher=launcher,      # type: ignore[arg-type]
             ranks_per_shot=ranks,
+            cpus_per_rank=cpus_per_rank,
             device_kind=device_kind,    # type: ignore[arg-type]
             shots_per_job=shots_per_job,
+            numa_aware=numa_aware,
             binding=binding,
             env=env,
         )
