@@ -3,13 +3,12 @@
  * @brief Sensitivity kernel implementation for 2D isotropic acoustic media
  *
  * Vp kernel: K_Vp += -2/(ρ·Vp³) · p̈_fwd · p_adj · dt
- * ρ  kernel: K_ρ  += -(1/ρ²) · ∇p_fwd · ∇p_adj · dt      (gradient of misfit)
+ * ρ  kernel: K_ρ  += -(1/ρ²) · ∇p_fwd · ∇p_adj · dt
  *
- * Pseudo-Hessian (Shin diagonal approximation):
- *   H_Vp += 4/(ρ²·Vp⁶) · p̈_fwd² · dt
- *   H_ρ  += (1/ρ²) · |∇p_fwd|² · dt
- *
- * GPU kernels follow the same forall_2D pattern as IsotropicAcousticKernels2D.cpp.
+ * Pseudo-Hessian accumulated as raw forward illumination; chain-rule coefficient²
+ * applied at SaveHessian time.
+ *   H_Vp_raw += p̈_fwd² · dt           saved as 4/(ρ²·Vp⁶) · H_Vp_raw
+ *   H_ρ_raw  += |∇p_fwd|² · dt        saved as (1/ρ²)     · H_ρ_raw
  */
 
 #include "fwi/IsotropicAcousticSensitivity2D.hpp"
@@ -53,8 +52,6 @@ IsotropicAcousticSensitivity2D::IsotropicAcousticSensitivity2D(
     // Pre-compute Vp gradient coefficient and copy 1/ρ
     vp_coeff_.SetSize(total_gll);
     vp_coeff_.UseDevice(true);
-    vp_hess_coeff_.SetSize(total_gll);
-    vp_hess_coeff_.UseDevice(true);
     inv_rho_.SetSize(total_gll);
     inv_rho_.UseDevice(true);
     InitCoefficients(kappa, inv_rho, unrelaxed_correction);
@@ -100,7 +97,6 @@ void IsotropicAcousticSensitivity2D::InitCoefficients(
         const real_t* d_corr = unrelaxed_correction ? unrelaxed_correction->Read()
                                                      : nullptr;
         real_t* d_vp_coeff = vp_coeff_.Write();
-        real_t* d_vp_hess_coeff = vp_hess_coeff_.Write();
         mfem::forall(total_gll, [=] MFEM_HOST_DEVICE (int i) {
             const real_t k_u = d_kappa[i];
             const real_t ir = d_inv_rho[i];
@@ -112,7 +108,6 @@ void IsotropicAcousticSensitivity2D::InitCoefficients(
             const real_t rho_vp3 = rho * vp2 * vp;    // ρ·Vp_user³
             const real_t c = 2.0 / (c_corr * rho_vp3);  // 2/(c·ρ·Vp_user³)
             d_vp_coeff[i] = c;
-            d_vp_hess_coeff[i] = c * c;               // (2/(c·ρ·Vp_user³))²
         });
     }
 
@@ -170,7 +165,6 @@ void IsotropicAcousticSensitivity2D::AccumulateVpKernel(
 
     auto gather_map = dofs_.ViewGatherMap();
     auto vp_coeff = Reshape(vp_coeff_.Read(), ngll_, ngll_, ne_);
-    auto vp_hess_coeff = Reshape(vp_hess_coeff_.Read(), ngll_, ngll_, ne_);
 
     mfem::forall_2D(ne, NGLL, NGLL, [=] MFEM_HOST_DEVICE (int ei)
     {
@@ -182,14 +176,11 @@ void IsotropicAcousticSensitivity2D::AccumulateVpKernel(
                 const int local_idx = ix + iy * NGLL + ei * NGLL * NGLL;
 
                 const real_t c_vp = vp_coeff(ix, iy, ei);
-                const real_t c_hess = vp_hess_coeff(ix, iy, ei);
                 const real_t a_fwd = d_fwd_a[gll_idx];
                 const real_t p_adj = d_adj_p[gll_idx];
 
-                // K_Vp -= 2/(ρ·Vp³) · p̈_fwd · p_adj · dt
                 d_kernel[local_idx] -= c_vp * a_fwd * p_adj * dt;
-                // H_Vp += 4/(ρ²·Vp⁶) · p̈_fwd² · dt  (Shin pseudo-Hessian)
-                d_hessian[local_idx] += c_hess * a_fwd * a_fwd * dt;
+                d_hessian[local_idx] += a_fwd * a_fwd * dt;
             }
         }
     });
@@ -286,14 +277,12 @@ void IsotropicAcousticSensitivity2D::AccumulateRhoKernel(
                 // Dot product: ∇p_fwd · ∇p_adj
                 const real_t grad_dot = dfwd_dx * dadj_dx + dfwd_dy * dadj_dy;
 
-                // Accumulate: K_ρ -= (1/ρ²) · ∇p_fwd · ∇p_adj · dt
                 const int local_idx = ix + iy * NGLL + ei * NGLL * NGLL;
                 const real_t ir = inv_rho(ix, iy, ei);
                 d_kernel[local_idx] -= ir * ir * grad_dot * dt;
 
-                // Pseudo-Hessian (source illumination): H_ρ += (1/ρ²) · |∇φ_fwd|² · dt
                 const real_t fwd_grad_sq = dfwd_dx * dfwd_dx + dfwd_dy * dfwd_dy;
-                d_rho_hessian[local_idx] += ir * ir * fwd_grad_sq * dt;
+                d_rho_hessian[local_idx] += fwd_grad_sq * dt;
             }
         }
     });
@@ -355,21 +344,17 @@ void IsotropicAcousticSensitivity2D::SaveHessian(
     MaterialField vp_hfield(ne_, ngll_, ngll_);
     MaterialField rho_hfield(ne_, ngll_, ngll_);
 
-    // H_Vp: directly computed in Vp space — copy as-is
-    {
-        const real_t* h_src = vp_hessian_.HostRead();
-        real_t* h_dst = vp_hfield.HostWrite();
-        for (int i = 0; i < total; i++) {
-            h_dst[i] = h_src[i];
-        }
-    }
-    // H_ρ: directly computed in ρ space — copy as-is
-    {
-        const real_t* h_src = rho_hessian_.HostRead();
-        real_t* h_dst = rho_hfield.HostWrite();
-        for (int i = 0; i < total; i++) {
-            h_dst[i] = h_src[i];
-        }
+    const real_t* h_vp_src  = vp_hessian_.HostRead();
+    const real_t* h_rho_src = rho_hessian_.HostRead();
+    const real_t* h_c_vp    = vp_coeff_.HostRead();
+    const real_t* h_ir      = inv_rho_.HostRead();
+    real_t* h_vp_dst  = vp_hfield.HostWrite();
+    real_t* h_rho_dst = rho_hfield.HostWrite();
+    for (int i = 0; i < total; i++) {
+        const real_t c  = h_c_vp[i];
+        const real_t ir = h_ir[i];
+        h_vp_dst[i]  = c * c * h_vp_src[i];
+        h_rho_dst[i] = ir * ir * h_rho_src[i];
     }
 
     // Build source suffix for filenames

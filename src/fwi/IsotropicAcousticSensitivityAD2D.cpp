@@ -192,19 +192,7 @@ void IsotropicAcousticSensitivityAD2D::AccumulateVpKernel_AD(
 
                 d_k_invkappa[local_idx] += integrand.gradient * dt;
 
-                // Pseudo-Hessian H_Vp: 4/(ρ²Vp⁶) = [2/(ρVp³)]² with Vp² = κ/ρ,
-                // so (2/(ρVp³))² = 4·(1/κ²)·(1/ρ²)·Vp² ... actually simplest:
-                // c_vp = 2·(1/κ)/Vp = 2·ik·sqrt(ik/inv_rho)... cleaner to compute
-                // directly from stored ik, inv_rho.
-                //   Vp² = κ/ρ = (1/ik) · (1/inv_rho)⁻¹ · inv_rho = 1/(ik) ... wait
-                //   κ = 1/ik, ρ = 1/inv_rho, so Vp² = κ/ρ = (1/ik)·inv_rho = inv_rho/ik
-                //   2/(ρVp³) = 2·inv_rho / Vp³ = 2·inv_rho / (Vp² · Vp) = 2·inv_rho / ((inv_rho/ik)·Vp)
-                //           = 2·ik / Vp
-                //   Vp = sqrt(inv_rho/ik)
-                //   so c_vp = 2·ik / sqrt(inv_rho/ik) = 2·ik·sqrt(ik/inv_rho) = 2·ik^{3/2}/sqrt(inv_rho)
-                const real_t ir_val = inv_rho(ix, iy, ei);
-                const real_t c_vp   = 2.0 * ik_val * std::sqrt(ik_val / ir_val);
-                d_hessian[local_idx] += c_vp * c_vp * a_fwd * a_fwd * dt;
+                d_hessian[local_idx] += a_fwd * a_fwd * dt;
             }
         }
     });
@@ -310,9 +298,8 @@ void IsotropicAcousticSensitivityAD2D::AccumulateRhoKernel_AD(
                 const int local_idx = ix + iy * NGLL + ei * NGLL * NGLL;
                 d_k_invrho[local_idx] += integrand.gradient * dt;
 
-                // Pseudo-Hessian (source illumination): unchanged from hand version.
                 const real_t fwd_grad_sq = dfwd_dx * dfwd_dx + dfwd_dy * dfwd_dy;
-                d_rho_hess[local_idx] += ir_val * ir_val * fwd_grad_sq * dt;
+                d_rho_hess[local_idx] += fwd_grad_sq * dt;
             }
         }
     });
@@ -409,15 +396,18 @@ void IsotropicAcousticSensitivityAD2D::SaveHessian(
     MaterialField vp_hfield(ne_, ngll_, ngll_);
     MaterialField rho_hfield(ne_, ngll_, ngll_);
 
-    {
-        const real_t* h_src = vp_hessian_.HostRead();
-        real_t* h_dst = vp_hfield.HostWrite();
-        for (int i = 0; i < total; i++) h_dst[i] = h_src[i];
-    }
-    {
-        const real_t* h_src = rho_hessian_.HostRead();
-        real_t* h_dst = rho_hfield.HostWrite();
-        for (int i = 0; i < total; i++) h_dst[i] = h_src[i];
+    const real_t* h_vp_src  = vp_hessian_.HostRead();
+    const real_t* h_rho_src = rho_hessian_.HostRead();
+    const real_t* h_ik      = inv_kappa_.HostRead();
+    const real_t* h_ir      = inv_rho_.HostRead();
+    real_t* h_vp_dst  = vp_hfield.HostWrite();
+    real_t* h_rho_dst = rho_hfield.HostWrite();
+    for (int i = 0; i < total; i++) {
+        const real_t ik = h_ik[i];
+        const real_t ir = h_ir[i];
+        const real_t c_vp = 2.0 * ik * std::sqrt(ik / ir);
+        h_vp_dst[i]  = c_vp * c_vp * h_vp_src[i];
+        h_rho_dst[i] = ir * ir * h_rho_src[i];
     }
 
     std::ostringstream oss;

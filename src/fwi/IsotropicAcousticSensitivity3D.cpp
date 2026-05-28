@@ -52,7 +52,6 @@ IsotropicAcousticSensitivity3D::IsotropicAcousticSensitivity3D(
     };
 
     alloc_dev(vp_coeff_);
-    alloc_dev(vp_hess_coeff_);
     alloc_dev(inv_rho_);
     InitCoefficients(kappa, inv_rho, unrelaxed_correction);
 
@@ -80,19 +79,17 @@ void IsotropicAcousticSensitivity3D::InitCoefficients(
         const real_t* d_corr    = unrelaxed_correction ? unrelaxed_correction->Read()
                                                          : nullptr;
         real_t* d_vp_coeff      = vp_coeff_.Write();
-        real_t* d_vp_hess_coeff = vp_hess_coeff_.Write();
         mfem::forall(total_gll, [=] MFEM_HOST_DEVICE (int i) {
             const real_t k_u   = d_kappa[i];
             const real_t ir    = d_inv_rho[i];
             const real_t rho   = 1.0 / ir;
             const real_t c_corr = d_corr ? d_corr[i] : 1.0;
-            const real_t k_user = k_u / c_corr;       // user-facing κ
-            const real_t vp2    = k_user * ir;        // Vp_user²
+            const real_t k_user = k_u / c_corr;
+            const real_t vp2    = k_user * ir;
             const real_t vp     = sqrt(vp2);
-            const real_t rho_vp3 = rho * vp2 * vp;    // ρ·Vp_user³
-            const real_t c      = 2.0 / (c_corr * rho_vp3);  // 2/(c·ρ·Vp_user³)
-            d_vp_coeff[i]      = c;
-            d_vp_hess_coeff[i] = c * c;
+            const real_t rho_vp3 = rho * vp2 * vp;
+            const real_t c      = 2.0 / (c_corr * rho_vp3);
+            d_vp_coeff[i] = c;
         });
     }
     {
@@ -145,9 +142,8 @@ void IsotropicAcousticSensitivity3D::AccumulateVpKernel(
     real_t* d_kernel  = vp_kernel_.ReadWrite();
     real_t* d_hessian = vp_hessian_.ReadWrite();
 
-    auto gather_map    = dofs_.ViewGatherMap();
-    auto vp_coeff      = Reshape(vp_coeff_.Read(), ngll_, ngll_, ngll_, ne_);
-    auto vp_hess_coeff = Reshape(vp_hess_coeff_.Read(), ngll_, ngll_, ngll_, ne_);
+    auto gather_map = dofs_.ViewGatherMap();
+    auto vp_coeff   = Reshape(vp_coeff_.Read(), ngll_, ngll_, ngll_, ne_);
 
     mfem::forall_3D(ne, NGLL, NGLL, NGLL, [=] MFEM_HOST_DEVICE (int ei) {
         MFEM_FOREACH_THREAD(iz, z, NGLL) {
@@ -158,13 +154,12 @@ void IsotropicAcousticSensitivity3D::AccumulateVpKernel(
                         ix + iy * NGLL + iz * NGLL * NGLL
                         + ei * NGLL * NGLL * NGLL;
 
-                    const real_t c_vp   = vp_coeff(ix, iy, iz, ei);
-                    const real_t c_hess = vp_hess_coeff(ix, iy, iz, ei);
-                    const real_t a_fwd  = d_fwd_a[gll_idx];
-                    const real_t p_adj  = d_adj_p[gll_idx];
+                    const real_t c_vp  = vp_coeff(ix, iy, iz, ei);
+                    const real_t a_fwd = d_fwd_a[gll_idx];
+                    const real_t p_adj = d_adj_p[gll_idx];
 
-                    d_kernel[local_idx]  -= c_vp   * a_fwd * p_adj * dt;
-                    d_hessian[local_idx] += c_hess * a_fwd * a_fwd * dt;
+                    d_kernel[local_idx]  -= c_vp * a_fwd * p_adj * dt;
+                    d_hessian[local_idx] += a_fwd * a_fwd * dt;
                 }
             }
         }
@@ -265,7 +260,7 @@ void IsotropicAcousticSensitivity3D::AccumulateRhoKernel(
                         + ei * NGLL * NGLL * NGLL;
                     const real_t ir = inv_rho(ix, iy, iz, ei);
                     d_kernel[local_idx]   -= ir * ir * grad_dot * dt;
-                    d_rho_hess[local_idx] += ir * ir * grad_sq_f * dt;
+                    d_rho_hess[local_idx] += grad_sq_f * dt;
                 }
             }
         }
@@ -313,15 +308,17 @@ void IsotropicAcousticSensitivity3D::SaveHessian(
     MaterialField3D vp_h(ne_, ngll_, ngll_, ngll_);
     MaterialField3D rho_h(ne_, ngll_, ngll_, ngll_);
 
-    {
-        const real_t* h_src = vp_hessian_.HostRead();
-        real_t* h_dst = vp_h.HostWrite();
-        for (int i = 0; i < total; ++i) h_dst[i] = h_src[i];
-    }
-    {
-        const real_t* h_src = rho_hessian_.HostRead();
-        real_t* h_dst = rho_h.HostWrite();
-        for (int i = 0; i < total; ++i) h_dst[i] = h_src[i];
+    const real_t* h_vp_src  = vp_hessian_.HostRead();
+    const real_t* h_rho_src = rho_hessian_.HostRead();
+    const real_t* h_c_vp    = vp_coeff_.HostRead();
+    const real_t* h_ir      = inv_rho_.HostRead();
+    real_t* h_vp_dst  = vp_h.HostWrite();
+    real_t* h_rho_dst = rho_h.HostWrite();
+    for (int i = 0; i < total; ++i) {
+        const real_t c  = h_c_vp[i];
+        const real_t ir = h_ir[i];
+        h_vp_dst[i]  = c * c * h_vp_src[i];
+        h_rho_dst[i] = ir * ir * h_rho_src[i];
     }
 
     std::ostringstream oss;

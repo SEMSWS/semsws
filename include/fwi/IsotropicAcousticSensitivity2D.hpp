@@ -72,18 +72,14 @@ private:
     SEMGeometry2D geom_;
     SEMDofOrdering2D dofs_;
 
-    // Pre-computed material coefficients
-    Vector vp_coeff_;       // 2/(ρ·Vp³) at GLL points [ngll*ngll*ne]
-    Vector vp_hess_coeff_;  // 4/(ρ²·Vp⁶) at GLL points [ngll*ngll*ne]
-    Vector inv_rho_;        // 1/ρ at GLL points [ngll*ngll*ne]
+    Vector vp_coeff_;
+    Vector inv_rho_;
 
-    // Accumulated sensitivity kernels
-    Vector vp_kernel_;      // K_Vp at GLL points [ngll*ngll*ne]
-    Vector rho_kernel_;     // K_ρ at GLL points [ngll*ngll*ne]
+    Vector vp_kernel_;
+    Vector rho_kernel_;
 
-    // Pseudo-Hessian diagonal (Shin approximation)
-    Vector vp_hessian_;     // H_Vp = Σ 4/(ρ²·Vp⁶)·p̈²·dt [ngll*ngll*ne]
-    Vector rho_hessian_;    // H_ρ = Σ (1/ρ²)·|∇φ_fwd|²·dt [ngll*ngll*ne]
+    Vector vp_hessian_;
+    Vector rho_hessian_;
 
     // FE space for output
     ParFiniteElementSpace* fes_;

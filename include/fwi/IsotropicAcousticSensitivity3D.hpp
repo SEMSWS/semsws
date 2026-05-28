@@ -63,9 +63,8 @@ private:
     SEMGeometry3D geom_;
     SEMDofOrdering3D dofs_;
 
-    Vector vp_coeff_;        // 2/(ρ·Vp³)
-    Vector vp_hess_coeff_;   // 4/(ρ²·Vp⁶)
-    Vector inv_rho_;         // 1/ρ
+    Vector vp_coeff_;
+    Vector inv_rho_;
 
     Vector vp_kernel_;
     Vector rho_kernel_;
