@@ -6,6 +6,7 @@ mesh:/material: at the freshly written shared directories.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,6 +23,18 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Mesh preflight
 # ---------------------------------------------------------------------------
+
+def _preflight_env(rc: RunConfig) -> dict[str, str]:
+    """Build the env dict for preflight subprocesses.
+
+    Inherits the parent environment and overlays `run.binding.extra_env`
+    so MPI tuning vars (e.g. OMPI_MCA_pml) reach mesh / material preflight
+    invocations the same way they reach per-shot mpirun calls.
+    """
+    env = os.environ.copy()
+    env.update({str(k): str(v) for k, v in rc.binding.extra_env.items()})
+    return env
+
 
 def mesh_needs_partition(mesh: dict, ranks_per_shot: int) -> bool:
     if ranks_per_shot <= 1:
@@ -108,6 +121,7 @@ def run_mesh_preflight(
     )
     log.info("[mesh-preflight] %s", " ".join(cmd))
     proc = subprocess.run(cmd, cwd=str(layout.workdir),
+                          env=_preflight_env(rc),
                           capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         log.error("[mesh-preflight] stdout:\n%s", proc.stdout)
@@ -198,6 +212,7 @@ def run_material_preflight(
            "-out", str(bp_dir)]
     log.info("[material-preflight] %s", " ".join(cmd))
     proc = subprocess.run(cmd, cwd=str(layout.shared_model_dir),
+                          env=_preflight_env(rc),
                           capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         log.error("[material-preflight] stdout:\n%s", proc.stdout)

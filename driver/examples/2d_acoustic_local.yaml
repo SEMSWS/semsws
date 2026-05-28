@@ -35,7 +35,7 @@ receivers:
   - PS
 sources: {}
 run:
-  binary: /home/kota/program_ubuntu/SEMSWS/build/src/semsws
+  binary: semsws    # bare name → resolved via $PATH (e.g. spack load semsws)
   scheduler: local
   launcher: local
   ranks_per_shot: 2
