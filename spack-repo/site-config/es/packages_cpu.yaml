@@ -29,14 +29,8 @@ packages:
     require: '%gcc'
   metis:
     require: '%gcc'
-  # ADIOS2 2.12+ uses C++17 std::filesystem in its utility binaries (bpls,
-  # adios_reorganize). With GCC < 9 std::filesystem is in libstdc++fs.a and
-  # is not auto-linked, so those utilities fail with `undefined reference to
-  # std::filesystem::path::_M_split_cmpts`. ES ships GCC 8.5 — pin <=2.11.
   adios2:
-    require:
-    - '%gcc'
-    - '@:2.11'
+    require: '%gcc'
   netcdf-c:       { require: '%gcc' }
   netcdf-cxx4:    { require: '%gcc' }
   netcdf-fortran: { require: '%gcc' }

@@ -53,11 +53,18 @@ spack compiler find                    # registers nvhpc@24.7 + gcc@8.5
 spack repo add "$WORK/SEMSWS/spack-repo"
 spack install semsws@main +cuda cuda_arch=80 precision=single +gpu_aware_mpi \
   cxxflags=="-noswitcherror" cflags=="-noswitcherror" ldlibs=="-lstdc++fs" \
-  ^hypre@2.33 %nvhpc
+  ^hypre@2.33 ^adios2 ldlibs="-lstdc++fs" %nvhpc
 ```
 
-For CPU, swap to `load_cpu.sh` + `packages_cpu.yaml` and run
-`spack install semsws@main precision=single %gcc`.
+The `^adios2 ldlibs="-lstdc++fs"` is needed because ADIOS2's `bpls` /
+`adios_reorganize` utilities use C++17 `std::filesystem`, which on GCC < 9
+(ES = 8.5) lives in `libstdc++fs.a` and is not auto-linked.
+
+For CPU, swap to `load_cpu.sh` + `packages_cpu.yaml` and run:
+
+```bash
+spack install semsws@main precision=single %gcc ^adios2 ldlibs="-lstdc++fs"
+```
 
 ## (B) GPU and CPU side by side (Spack environment)
 
@@ -114,11 +121,8 @@ spack:
       require: '%gcc'
     metis:
       require: '%gcc'
-    # ADIOS2 2.12+ needs -lstdc++fs on GCC < 9; ES uses GCC 8.5 → pin <=2.11.
     adios2:
-      require:
-      - '%gcc'
-      - '@:2.11'
+      require: '%gcc'
     netcdf-c:       { require: '%gcc' }
     netcdf-cxx4:    { require: '%gcc' }
     netcdf-fortran: { require: '%gcc' }
@@ -133,8 +137,13 @@ spack:
         mpi: [openmpi]
       variants: cuda_arch=80
 
+  # ADIOS2's bpls / adios_reorganize use C++17 std::filesystem. On GCC < 9
+  # (ES = 8.5) that lives in libstdc++fs.a and is NOT auto-linked, so the
+  # `^adios2 ldlibs="-lstdc++fs"` clause forces the compiler-wrapper to add
+  # it to every adios2 link command. Without it: undefined reference to
+  # std::filesystem::path::_M_split_cmpts.
   specs:
-  - semsws@main +cuda cuda_arch=80 precision=single +gpu_aware_mpi cxxflags=="-noswitcherror" cflags=="-noswitcherror" ldlibs=="-lstdc++fs" ^hypre@2.33 %nvhpc
+  - semsws@main +cuda cuda_arch=80 precision=single +gpu_aware_mpi cxxflags=="-noswitcherror" cflags=="-noswitcherror" ldlibs=="-lstdc++fs" ^hypre@2.33 ^adios2 ldlibs="-lstdc++fs" %nvhpc
 
   concretizer:
     unify: true
@@ -182,11 +191,8 @@ spack:
       require: '%gcc'
     metis:
       require: '%gcc'
-    # ADIOS2 2.12+ needs -lstdc++fs on GCC < 9; ES uses GCC 8.5 → pin <=2.11.
     adios2:
-      require:
-      - '%gcc'
-      - '@:2.11'
+      require: '%gcc'
     netcdf-c:       { require: '%gcc' }
     netcdf-cxx4:    { require: '%gcc' }
     netcdf-fortran: { require: '%gcc' }
@@ -200,8 +206,12 @@ spack:
       providers:
         mpi: [openmpi]
 
+  # ADIOS2's bpls / adios_reorganize use C++17 std::filesystem. On GCC < 9
+  # (ES = 8.5) that lives in libstdc++fs.a and is NOT auto-linked, so the
+  # `^adios2 ldlibs="-lstdc++fs"` clause forces the compiler-wrapper to add
+  # it to every adios2 link command.
   specs:
-  - semsws@main precision=single %gcc
+  - semsws@main precision=single %gcc ^adios2 ldlibs="-lstdc++fs"
 
   concretizer:
     unify: true
