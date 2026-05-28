@@ -36,9 +36,19 @@ find_package(yaml-cpp 0.9.0 REQUIRED)
 message(STATUS "yaml-cpp via find_package: ${yaml-cpp_DIR}")
 
 # =============================================================================
-# Find MFEM. Requires a CMake-built MFEM that ships MFEMConfig.cmake.
+# Find MFEM. CMake-built (MFEMConfig.cmake) or Make-built (share/mfem/config.mk).
 # =============================================================================
-find_package(MFEM CONFIG REQUIRED PATHS ${MFEM_DIR})
+# CMake overwrites MFEM_DIR with *-NOTFOUND when CONFIG search fails; preserve it.
+set(_SEM_MFEM_DIR_HINT "${MFEM_DIR}")
+find_package(MFEM CONFIG QUIET PATHS ${_SEM_MFEM_DIR_HINT})
+if(NOT MFEM_FOUND)
+    set(MFEM_DIR "${_SEM_MFEM_DIR_HINT}")
+    include(${PROJECT_SOURCE_DIR}/cmake/FindMFEMFromMakeConfig.cmake)
+endif()
+if(NOT MFEM_FOUND)
+    message(FATAL_ERROR
+        "MFEM not found via MFEMConfig.cmake or config.mk under ${_SEM_MFEM_DIR_HINT}")
+endif()
 # SEMSWS uses <mfem.hpp> exclusively; the umbrella only pulls in forall.hpp
 # and linalg/tensor.hpp (transitively dual.hpp) starting in MFEM 4.9.
 if(MFEM_VERSION AND MFEM_VERSION VERSION_LESS 4.9)
