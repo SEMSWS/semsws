@@ -375,3 +375,91 @@ def test_lsf_env_var_primary(monkeypatch, tmp_path):
     assert a.scheduler == "lsf"
     assert a.nodes == ["h1", "h2"]
     assert a.ranks_per_node == 32
+
+
+# ---- Unified YAML overrides honored by every scheduler ---------------------
+
+
+def test_pbs_yaml_overrides_win_over_env(monkeypatch, tmp_path):
+    """YAML override beats both PBS_NUM_PPN and file count."""
+    nf = tmp_path / "nf"
+    nf.write_text("a\na\nb\nb\n")
+    monkeypatch.setenv("PBS_JOBID", "x")
+    monkeypatch.setenv("PBS_NODEFILE", str(nf))
+    monkeypatch.setenv("PBS_NUM_PPN", "2")
+    for k in ("SLURM_JOB_ID", "PJM_JOBID", "LSB_JOBID"):
+        monkeypatch.delenv(k, raising=False)
+    a = detect_allocation(
+        force="pbs",
+        ranks_per_node=64,             # override wins
+        cores_per_node=64,             # override wins
+        nodes=["override1", "override2", "override3"],
+    )
+    assert a.nodes == ["override1", "override2", "override3"]
+    assert a.ranks_per_node == 64
+    assert a.cpus_per_node == 64
+
+
+def test_pbs_yaml_overrides_no_env_required(monkeypatch):
+    """PBS_NODEFILE is unnecessary when YAML provides every field."""
+    for k in ("SLURM_JOB_ID", "PJM_JOBID", "LSB_JOBID",
+              "PBS_NODEFILE", "PBS_NUM_PPN"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("PBS_JOBID", "x")
+    a = detect_allocation(
+        force="pbs",
+        nodes=["cn1", "cn2"],
+        ranks_per_node=128,
+        cores_per_node=128,
+    )
+    assert a.scheduler == "pbs"
+    assert a.nodes == ["cn1", "cn2"]
+    assert a.ranks_per_node == 128
+
+
+def test_slurm_yaml_overrides_win(monkeypatch):
+    monkeypatch.setenv("SLURM_JOB_ID", "111")
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "nid[01-04]")
+    monkeypatch.setenv("SLURM_NTASKS_PER_NODE", "8")
+    monkeypatch.setenv("SLURM_CPUS_ON_NODE", "64")
+    a = detect_allocation(
+        force="slurm",
+        nodes=["forced1", "forced2"],
+        ranks_per_node=32,
+        cores_per_node=128,
+    )
+    assert a.nodes == ["forced1", "forced2"]
+    assert a.ranks_per_node == 32
+    assert a.cpus_per_node == 128
+
+
+def test_lsf_yaml_overrides_win(monkeypatch):
+    monkeypatch.setenv("LSB_JOBID", "lsf.42")
+    monkeypatch.setenv("LSB_HOSTS", "h1 h1 h2 h2")
+    monkeypatch.setenv("LSB_DJOB_NUMPROC", "4")
+    for k in ("SLURM_JOB_ID", "PJM_JOBID", "PBS_JOBID"):
+        monkeypatch.delenv(k, raising=False)
+    a = detect_allocation(
+        force="lsf",
+        nodes=["x", "y"],
+        ranks_per_node=16,
+        cores_per_node=32,
+    )
+    assert a.nodes == ["x", "y"]
+    assert a.ranks_per_node == 16
+    assert a.cpus_per_node == 32
+
+
+def test_local_yaml_overrides_shape_allocation(monkeypatch):
+    for k in ("SLURM_JOB_ID", "PJM_JOBID", "PBS_JOBID", "LSB_JOBID"):
+        monkeypatch.delenv(k, raising=False)
+    a = detect_allocation(
+        force="local",
+        nodes=["simhost1", "simhost2"],
+        ranks_per_node=4,
+        cores_per_node=8,
+    )
+    assert a.scheduler == "local"
+    assert a.nodes == ["simhost1", "simhost2"]
+    assert a.ranks_per_node == 4
+    assert a.cpus_per_node == 8

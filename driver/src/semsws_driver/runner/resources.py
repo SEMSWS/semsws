@@ -98,14 +98,14 @@ def detect_allocation(
     if force == "manual":
         return _manual_allocation(nodes_list, ranks_per_node, cores_per_node, gpus_per_node)
     if force == "slurm" or (force is None and "SLURM_JOB_ID" in os.environ):
-        return _slurm_allocation(cores_per_node, gpus_per_node)
+        return _slurm_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
     if force == "pjm" or (force is None and "PJM_JOBID" in os.environ):
         return _pjm_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
     if force == "pbs" or (force is None and "PBS_JOBID" in os.environ):
-        return _pbs_allocation(cores_per_node, gpus_per_node)
+        return _pbs_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
     if force == "lsf" or (force is None and "LSB_JOBID" in os.environ):
-        return _lsf_allocation(cores_per_node, gpus_per_node)
-    return _local_allocation(cores_per_node, gpus_per_node)
+        return _lsf_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
+    return _local_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
 
 
 def _resolve_nodes(value: str) -> list[str]:
@@ -145,8 +145,12 @@ def _resolve_nodes(value: str) -> list[str]:
 # ---- SLURM -----------------------------------------------------------------
 
 def _slurm_allocation(
-    cores_override: Optional[int], gpus_override: Optional[int]
+    cores_override: Optional[int],
+    gpus_override: Optional[int],
+    ranks_override: Optional[int] = None,
+    nodes_override: Optional[list[str]] = None,
 ) -> Allocation:
+    """SLURM allocation. YAML overrides win over scheduler-native env vars."""
     seen: dict[str, str] = {}
     missing: list[str] = []
 
@@ -159,38 +163,47 @@ def _slurm_allocation(
         return v
 
     job_id = _get("SLURM_JOB_ID", required=True)
-    nodelist = _get("SLURM_JOB_NODELIST", required=True)
-    n_nodes_raw = _get("SLURM_NNODES")
 
-    nodes = _expand_slurm_nodelist(nodelist)
-    if n_nodes_raw and int(n_nodes_raw) != len(nodes):
-        log.warning(
-            "SLURM_NNODES=%s but nodelist expanded to %d hosts", n_nodes_raw, len(nodes)
-        )
-
-    ranks_per_node = 0
-    rpn_raw = _get("SLURM_NTASKS_PER_NODE")
-    if rpn_raw:
-        ranks_per_node = int(rpn_raw)
+    if nodes_override:
+        nodes = list(nodes_override)
     else:
-        tpn_raw = _get("SLURM_TASKS_PER_NODE")
-        if tpn_raw:
-            ranks_per_node = int(tpn_raw.split("(")[0])
-        else:
-            nprocs_raw = _get("SLURM_NPROCS")
-            if nprocs_raw and len(nodes) > 0:
-                ranks_per_node = int(nprocs_raw) // len(nodes)
-                missing.append("SLURM_NTASKS_PER_NODE")
-    if ranks_per_node <= 0:
-        raise RuntimeError(
-            "SLURM_NTASKS_PER_NODE / SLURM_TASKS_PER_NODE / SLURM_NPROCS all "
-            "missing: cannot determine ranks per node"
-        )
+        nodelist = _get("SLURM_JOB_NODELIST", required=True)
+        nodes = _expand_slurm_nodelist(nodelist)
+        n_nodes_raw = _get("SLURM_NNODES")
+        if n_nodes_raw and int(n_nodes_raw) != len(nodes):
+            log.warning(
+                "SLURM_NNODES=%s but nodelist expanded to %d hosts",
+                n_nodes_raw, len(nodes),
+            )
 
-    cpus_per_node = int(_get("SLURM_CPUS_ON_NODE") or cores_override or 0)
+    if ranks_override:
+        ranks_per_node = ranks_override
+    else:
+        ranks_per_node = 0
+        rpn_raw = _get("SLURM_NTASKS_PER_NODE")
+        if rpn_raw:
+            ranks_per_node = int(rpn_raw)
+        else:
+            tpn_raw = _get("SLURM_TASKS_PER_NODE")
+            if tpn_raw:
+                ranks_per_node = int(tpn_raw.split("(")[0])
+            else:
+                nprocs_raw = _get("SLURM_NPROCS")
+                if nprocs_raw and len(nodes) > 0:
+                    ranks_per_node = int(nprocs_raw) // len(nodes)
+                    missing.append("SLURM_NTASKS_PER_NODE")
+        if ranks_per_node <= 0:
+            raise RuntimeError(
+                "SLURM_NTASKS_PER_NODE / SLURM_TASKS_PER_NODE / SLURM_NPROCS all "
+                "missing: cannot determine ranks per node"
+            )
+
+    cpus_per_node = int(
+        cores_override or _get("SLURM_CPUS_ON_NODE") or 0
+    )
     if cpus_per_node <= 0:
         raise RuntimeError(
-            "SLURM_CPUS_ON_NODE missing and cores_per_node not provided"
+            "SLURM_CPUS_ON_NODE missing and run.cpus_per_node not provided"
         )
 
     gpus_raw = _get("SLURM_GPUS_ON_NODE") or _get("SLURM_GPUS_PER_NODE")
@@ -326,20 +339,23 @@ def _pjm_allocation(
 # ---- PBS / Torque ----------------------------------------------------------
 
 def _pbs_allocation(
-    cores_override: Optional[int], gpus_override: Optional[int]
+    cores_override: Optional[int],
+    gpus_override: Optional[int],
+    ranks_override: Optional[int] = None,
+    nodes_override: Optional[list[str]] = None,
 ) -> Allocation:
     """Build a PBS Allocation.
 
-    Resolution priority for `ranks_per_node`:
-      1. `PBS_NUM_PPN` env var (canonical, robust)
-      2. Legacy: count occurrences of the first node in `PBS_NODEFILE`.
-         This works when the nodefile has one line per process slot, but
-         is silently wrong on NQSV/PBS-pro setups that emit one line per
-         node. Triggers a DeprecationWarning when used.
+    Uniform resolution priority across all fields:
+      1. YAML override (`run.nodes` / `run.ranks_per_node` / `run.cpus_per_node`)
+      2. Scheduler-native env var (`PBS_NODEFILE` / `PBS_NUM_PPN`)
+      3. Legacy fallback for `ranks_per_node`: count occurrences of the
+         first node in PBS_NODEFILE. This works when the nodefile has
+         one line per process slot, but silently misreads NQSV-style
+         1-line-per-node nodefiles. Triggers a deprecation warning.
 
-    Nodes are always derived by dedupe of `PBS_NODEFILE` line tokens, so
-    the file format (1-line-per-node vs 1-line-per-rank) is invisible to
-    the rest of the pipeline.
+    Nodes are always deduped from the nodefile, so the file format
+    (1-line-per-node vs 1-line-per-rank) is invisible downstream.
     """
     seen: dict[str, str] = {}
     missing: list[str] = []
@@ -347,41 +363,61 @@ def _pbs_allocation(
     job_id = os.environ.get("PBS_JOBID", "")
     if job_id:
         seen["PBS_JOBID"] = job_id
-    nodefile_path = os.environ.get("PBS_NODEFILE")
-    if not nodefile_path:
-        raise RuntimeError("PBS_NODEFILE not set: cannot read PBS allocation")
-    seen["PBS_NODEFILE"] = nodefile_path
 
-    raw = Path(nodefile_path).read_text().split()
-    nodes = sorted(set(raw))
-    if not nodes:
-        raise RuntimeError(f"PBS nodefile {nodefile_path} appears empty")
-
-    ppn_raw = os.environ.get("PBS_NUM_PPN")
-    legacy_count = raw.count(nodes[0])
-    if ppn_raw:
-        seen["PBS_NUM_PPN"] = ppn_raw
-        ranks_per_node = int(ppn_raw)
-        cpus_per_node = ranks_per_node
+    if nodes_override:
+        nodes = list(nodes_override)
+        raw: list[str] = []      # legacy count unavailable when override is used
     else:
-        ranks_per_node = legacy_count
-        missing.append("PBS_NUM_PPN")
-        if cores_override:
-            cpus_per_node = cores_override
+        nodefile_path = os.environ.get("PBS_NODEFILE")
+        if not nodefile_path:
+            raise RuntimeError(
+                "PBS_NODEFILE not set and run.nodes not provided: cannot "
+                "read PBS allocation"
+            )
+        seen["PBS_NODEFILE"] = nodefile_path
+        raw = Path(nodefile_path).read_text().split()
+        nodes = sorted(set(raw))
+        if not nodes:
+            raise RuntimeError(f"PBS nodefile {nodefile_path} appears empty")
+
+    if ranks_override:
+        ranks_per_node = ranks_override
+    else:
+        ppn_raw = os.environ.get("PBS_NUM_PPN")
+        if ppn_raw:
+            seen["PBS_NUM_PPN"] = ppn_raw
+            ranks_per_node = int(ppn_raw)
         else:
-            cpus_per_node = os.cpu_count() or 1
-        log.warning(
-            "PBS_NUM_PPN not set; inferring ranks_per_node=%d from "
-            "PBS_NODEFILE occurrence count. This will silently misread "
-            "NQSV-style 1-line-per-node nodefiles. Export PBS_NUM_PPN "
-            "or set run.ranks_per_node explicitly. (deprecated)",
-            ranks_per_node,
-        )
+            if not raw:
+                raise RuntimeError(
+                    "PBS allocation: ranks_per_node unknown — set "
+                    "run.ranks_per_node, PBS_NUM_PPN, or use a "
+                    "scheduler-managed PBS_NODEFILE"
+                )
+            ranks_per_node = raw.count(nodes[0])
+            missing.append("PBS_NUM_PPN")
+            log.warning(
+                "PBS_NUM_PPN not set; inferring ranks_per_node=%d from "
+                "PBS_NODEFILE occurrence count. This will silently misread "
+                "NQSV-style 1-line-per-node nodefiles. Export PBS_NUM_PPN "
+                "or set run.ranks_per_node explicitly. (deprecated)",
+                ranks_per_node,
+            )
     if ranks_per_node <= 0:
         raise RuntimeError(
             "PBS allocation: ranks_per_node is 0; export PBS_NUM_PPN or "
             "set run.ranks_per_node in the YAML"
         )
+
+    if cores_override:
+        cpus_per_node = cores_override
+    else:
+        ppn_raw = os.environ.get("PBS_NUM_PPN")
+        if ppn_raw:
+            cpus_per_node = int(ppn_raw)
+        else:
+            cpus_per_node = os.cpu_count() or 1
+            missing.append("(PBS exposed no cpus_per_node, used os.cpu_count)")
 
     gpus_per_node = gpus_override if gpus_override is not None else _probe_gpus_local()
     if gpus_override is None:
@@ -402,15 +438,19 @@ def _pbs_allocation(
 # ---- LSF -------------------------------------------------------------------
 
 def _lsf_allocation(
-    cores_override: Optional[int], gpus_override: Optional[int]
+    cores_override: Optional[int],
+    gpus_override: Optional[int],
+    ranks_override: Optional[int] = None,
+    nodes_override: Optional[list[str]] = None,
 ) -> Allocation:
     """Build an LSF Allocation.
 
-    Resolution priority for `ranks_per_node`:
-      1. `LSB_DJOB_NUMPROC // n_nodes` (canonical, robust)
-      2. Legacy: count first node's occurrences in `LSB_DJOB_HOSTFILE`
-         or `LSB_HOSTS`. Same fragility as PBS — wrong if the hostfile
-         is 1-line-per-node. Triggers a DeprecationWarning when used.
+    Uniform resolution priority across all fields:
+      1. YAML override (`run.nodes` / `run.ranks_per_node` / `run.cpus_per_node`)
+      2. Scheduler-native env (`LSB_DJOB_HOSTFILE` / `LSB_HOSTS`,
+         `LSB_DJOB_NUMPROC // n_nodes`)
+      3. Legacy fallback for `ranks_per_node`: count occurrences of the
+         first host. Triggers a deprecation warning.
     """
     seen: dict[str, str] = {}
     missing: list[str] = []
@@ -419,38 +459,49 @@ def _lsf_allocation(
     if job_id:
         seen["LSB_JOBID"] = job_id
 
-    hostfile = os.environ.get("LSB_DJOB_HOSTFILE", "")
-    if hostfile:
-        seen["LSB_DJOB_HOSTFILE"] = hostfile
-    if hostfile and Path(hostfile).exists():
-        raw = Path(hostfile).read_text().split()
+    if nodes_override:
+        nodes = list(nodes_override)
+        raw: list[str] = []
     else:
-        hosts_env = os.environ.get("LSB_HOSTS", "")
-        if not hosts_env:
-            raise RuntimeError(
-                "LSF: LSB_DJOB_HOSTFILE or LSB_HOSTS required"
+        hostfile = os.environ.get("LSB_DJOB_HOSTFILE", "")
+        if hostfile:
+            seen["LSB_DJOB_HOSTFILE"] = hostfile
+        if hostfile and Path(hostfile).exists():
+            raw = Path(hostfile).read_text().split()
+        else:
+            hosts_env = os.environ.get("LSB_HOSTS", "")
+            if not hosts_env:
+                raise RuntimeError(
+                    "LSF: LSB_DJOB_HOSTFILE / LSB_HOSTS required, or set run.nodes"
+                )
+            seen["LSB_HOSTS"] = hosts_env
+            raw = hosts_env.split()
+        nodes = sorted(set(raw))
+        if not nodes:
+            raise RuntimeError("LSF: empty hostfile/hosts")
+
+    if ranks_override:
+        ranks_per_node = ranks_override
+    else:
+        numproc_raw = os.environ.get("LSB_DJOB_NUMPROC", "")
+        if numproc_raw:
+            seen["LSB_DJOB_NUMPROC"] = numproc_raw
+            ranks_per_node = int(numproc_raw) // len(nodes)
+        elif raw:
+            ranks_per_node = raw.count(nodes[0])
+            missing.append("LSB_DJOB_NUMPROC")
+            log.warning(
+                "LSB_DJOB_NUMPROC not set; inferring ranks_per_node=%d from "
+                "hostfile occurrence count. This will silently misread "
+                "1-line-per-node hostfiles. Export LSB_DJOB_NUMPROC or "
+                "set run.ranks_per_node explicitly. (deprecated)",
+                ranks_per_node,
             )
-        seen["LSB_HOSTS"] = hosts_env
-        raw = hosts_env.split()
-
-    nodes = sorted(set(raw))
-    if not nodes:
-        raise RuntimeError("LSF: empty hostfile/hosts")
-
-    numproc_raw = os.environ.get("LSB_DJOB_NUMPROC", "")
-    if numproc_raw:
-        seen["LSB_DJOB_NUMPROC"] = numproc_raw
-        ranks_per_node = int(numproc_raw) // len(nodes)
-    else:
-        ranks_per_node = raw.count(nodes[0])
-        missing.append("LSB_DJOB_NUMPROC")
-        log.warning(
-            "LSB_DJOB_NUMPROC not set; inferring ranks_per_node=%d from "
-            "hostfile occurrence count. This will silently misread "
-            "1-line-per-node hostfiles. Export LSB_DJOB_NUMPROC or "
-            "set run.ranks_per_node explicitly. (deprecated)",
-            ranks_per_node,
-        )
+        else:
+            raise RuntimeError(
+                "LSF allocation: ranks_per_node unknown — set "
+                "run.ranks_per_node or export LSB_DJOB_NUMPROC"
+            )
     if ranks_per_node <= 0:
         raise RuntimeError(
             "LSF allocation: ranks_per_node is 0; export LSB_DJOB_NUMPROC "
@@ -480,16 +531,24 @@ def _lsf_allocation(
 # ---- local ----------------------------------------------------------------
 
 def _local_allocation(
-    cores_override: Optional[int], gpus_override: Optional[int]
+    cores_override: Optional[int],
+    gpus_override: Optional[int],
+    ranks_override: Optional[int] = None,
+    nodes_override: Optional[list[str]] = None,
 ) -> Allocation:
+    """Local allocation. YAML overrides shape the carved slot layout the
+    same way they do for batch schedulers (uniformity), even though the
+    actual dispatch is to subprocesses on this host."""
     cpus = cores_override if cores_override else (os.cpu_count() or 1)
     gpus = gpus_override if gpus_override is not None else _probe_gpus_local()
+    nodes = list(nodes_override) if nodes_override else [socket.gethostname()]
+    ranks = ranks_override if ranks_override else cpus
     return Allocation(
         scheduler="local",
-        nodes=[socket.gethostname()],
+        nodes=nodes,
         cpus_per_node=cpus,
         gpus_per_node=gpus,
-        ranks_per_node=cpus,
+        ranks_per_node=ranks,
         job_id="local",
         env_seen={},
         env_missing_used_default=[],
