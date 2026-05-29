@@ -160,3 +160,14 @@ def test_overrides_optional_for_native_schedulers():
     assert rc.nodes is None
     assert rc.ranks_per_node is None
     assert rc.cpus_per_node is None
+
+
+def test_yaml_list_nodes_dedupes_preserving_order():
+    # A typoed duplicate gets silently dropped at parse time so the
+    # downstream Allocation has the right node count.
+    rc = RunConfig.from_dict({
+        "binary": "/x", "scheduler": "manual",
+        "nodes": ["cn1", "cn1", "cn2", "cn3", "cn2"],
+        "ranks_per_node": 4, "cpus_per_node": 4,
+    })
+    assert rc.nodes == ["cn1", "cn2", "cn3"]

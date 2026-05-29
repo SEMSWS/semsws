@@ -463,3 +463,23 @@ def test_local_yaml_overrides_shape_allocation(monkeypatch):
     assert a.nodes == ["simhost1", "simhost2"]
     assert a.ranks_per_node == 4
     assert a.cpus_per_node == 8
+
+
+# ---- Dedupe symmetry across all _resolve_nodes input shapes ----------------
+
+
+def test_resolve_nodes_comma_dedupes_preserve_order():
+    # `cn1` appears twice; second occurrence dropped, order kept.
+    assert _resolve_nodes("cn1,cn2,cn1,cn3") == ["cn1", "cn2", "cn3"]
+
+
+def test_resolve_nodes_compressed_dedupes_preserve_order():
+    # Overlapping ranges shouldn't double-count.
+    assert _resolve_nodes("nid[001-002,002-003]") == ["nid001", "nid002", "nid003"]
+
+
+def test_resolve_nodes_file_sorts_and_dedupes(tmp_path):
+    # File path stays sorted + deduped (consistent with prior behavior).
+    nf = tmp_path / "nf"
+    nf.write_text("b\na\nb\nc\na\n")
+    assert _resolve_nodes(str(nf)) == ["a", "b", "c"]

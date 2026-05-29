@@ -112,10 +112,15 @@ def _resolve_nodes(value: str) -> list[str]:
     """Convert a YAML `nodes:` string to a list of hostnames.
 
     Accepted shapes (checked in this order):
-      * absolute / relative path to a nodefile  → read, dedupe lines
-      * SLURM-compressed form `prefix[1-4,7]`   → expanded
-      * comma-separated list `a,b,c`            → split
+      * absolute / relative path to a nodefile  → read, sort + dedupe lines
+      * SLURM-compressed form `prefix[1-4,7]`   → expanded, dedupe in place
+      * comma-separated list `a,b,c`            → split, dedupe in place
       * single hostname                         → wrapped in list
+
+    Every shape ends up deduped. The two file path is sort-dedupe (the
+    file's order is meaningless); user-written sources (compressed,
+    comma list, single) keep first-occurrence order to honor whatever
+    the user actually typed.
 
     Empty strings raise. Environment variables (`$VAR`, `${VAR}`) are
     expanded before path checking so the caller can pass
@@ -136,10 +141,23 @@ def _resolve_nodes(value: str) -> list[str]:
             raise ValueError(f"nodefile {p} is empty")
         return sorted(set(raw))
     if "[" in s:
-        return _parse_slurm_nodelist(s)
+        return _unique_preserve_order(_parse_slurm_nodelist(s))
     if "," in s:
-        return [t.strip() for t in s.split(",") if t.strip()]
+        return _unique_preserve_order(
+            t.strip() for t in s.split(",") if t.strip()
+        )
     return [s]
+
+
+def _unique_preserve_order(seq) -> list[str]:
+    """Drop duplicates while keeping first-occurrence order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
 
 
 # ---- SLURM -----------------------------------------------------------------

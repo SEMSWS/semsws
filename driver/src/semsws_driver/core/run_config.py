@@ -102,10 +102,19 @@ class RunConfig:
                 "run.nodes must be a list, a string (path / compressed "
                 "nodelist / comma list), or omitted"
             )
-        nodes_value: NodesSpec = (
-            [str(x) for x in nodes_raw] if isinstance(nodes_raw, list)
-            else nodes_raw
-        )
+        if isinstance(nodes_raw, list):
+            # Dedupe (preserve order). Symmetric with _resolve_nodes for
+            # string inputs — every node source ends up unique by the
+            # time the runner sees it.
+            seen: set[str] = set()
+            nodes_value: NodesSpec = []
+            for x in nodes_raw:
+                xs = str(x)
+                if xs not in seen:
+                    seen.add(xs)
+                    nodes_value.append(xs)
+        else:
+            nodes_value = nodes_raw
 
         ranks_per_node = (
             int(d["ranks_per_node"]) if d.get("ranks_per_node") is not None else None
