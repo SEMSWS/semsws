@@ -10,11 +10,15 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
-Scheduler = Literal["local", "slurm", "pjm", "pbs", "lsf"]
+Scheduler = Literal["local", "slurm", "pjm", "pbs", "lsf", "manual"]
 Launcher = Literal["local", "mpirun", "mpiexec", "srun", "pjm"]
 DeviceKind = Literal["cpu", "cuda", "hip"]
+
+# Free-form value accepted for `run.nodes`. Resolved by
+# `_resolve_nodes` in runner.resources at allocation time.
+NodesSpec = Union[list[str], str, None]
 
 
 @dataclass
@@ -37,16 +41,22 @@ class RunConfig:
     numa_aware: bool = False
     binding: BindingBlock = field(default_factory=BindingBlock)
     env: dict[str, str] = field(default_factory=dict)
+    # Allocation overrides — work uniformly across all schedulers.
+    # Honored by `detect_allocation` when set; otherwise the scheduler's
+    # native env vars are used. `manual` scheduler requires them.
+    nodes: NodesSpec = None             # list | path | "nid[1-4]" | "a,b,c"
+    ranks_per_node: Optional[int] = None
+    cpus_per_node: Optional[int] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "RunConfig":
         if "binary" not in d:
             raise ValueError("run.binary is required")
         scheduler = d.get("scheduler", "local")
-        if scheduler not in ("local", "slurm", "pjm", "pbs", "lsf"):
+        if scheduler not in ("local", "slurm", "pjm", "pbs", "lsf", "manual"):
             raise ValueError(
                 f"run.scheduler must be one of "
-                f"local|slurm|pjm|pbs|lsf, got {scheduler!r}")
+                f"local|slurm|pjm|pbs|lsf|manual, got {scheduler!r}")
         device_kind = d.get("device_kind", "cpu")
         if device_kind not in ("cpu", "cuda", "hip"):
             raise ValueError(
@@ -86,6 +96,38 @@ class RunConfig:
 
         env = {str(k): str(v) for k, v in (d.get("env") or {}).items()}
 
+        nodes_raw = d.get("nodes")
+        if nodes_raw is not None and not isinstance(nodes_raw, (list, str)):
+            raise ValueError(
+                "run.nodes must be a list, a string (path / compressed "
+                "nodelist / comma list), or omitted"
+            )
+        nodes_value: NodesSpec = (
+            [str(x) for x in nodes_raw] if isinstance(nodes_raw, list)
+            else nodes_raw
+        )
+
+        ranks_per_node = (
+            int(d["ranks_per_node"]) if d.get("ranks_per_node") is not None else None
+        )
+        if ranks_per_node is not None and ranks_per_node < 1:
+            raise ValueError("run.ranks_per_node must be >= 1 when set")
+        cpus_per_node = (
+            int(d["cpus_per_node"]) if d.get("cpus_per_node") is not None else None
+        )
+        if cpus_per_node is not None and cpus_per_node < 1:
+            raise ValueError("run.cpus_per_node must be >= 1 when set")
+
+        if scheduler == "manual" and (
+            nodes_value is None
+            or ranks_per_node is None
+            or cpus_per_node is None
+        ):
+            raise ValueError(
+                "run.scheduler=manual requires run.nodes, run.ranks_per_node, "
+                "and run.cpus_per_node to be set"
+            )
+
         return cls(
             binary=_resolve_binary(d["binary"]),
             scheduler=scheduler,    # type: ignore[arg-type]
@@ -97,6 +139,9 @@ class RunConfig:
             numa_aware=numa_aware,
             binding=binding,
             env=env,
+            nodes=nodes_value,
+            ranks_per_node=ranks_per_node,
+            cpus_per_node=cpus_per_node,
         )
 
     def effective_launcher(self) -> Launcher:
@@ -109,6 +154,7 @@ class RunConfig:
             "pjm": "pjm",
             "pbs": "mpirun",
             "lsf": "mpirun",
+            "manual": "mpirun",
         }[self.scheduler]
 
 

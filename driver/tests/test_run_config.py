@@ -92,3 +92,71 @@ def test_zero_ranks_rejected():
 def test_zero_shots_per_job_rejected():
     with pytest.raises(ValueError, match="shots_per_job"):
         RunConfig.from_dict({"binary": "/x", "shots_per_job": 0})
+
+
+# ---- manual scheduler + allocation overrides -------------------------------
+
+
+def test_manual_scheduler_requires_overrides():
+    # nodes/ranks_per_node/cpus_per_node are mandatory for manual
+    with pytest.raises(ValueError, match="manual requires"):
+        RunConfig.from_dict({"binary": "/x", "scheduler": "manual"})
+
+
+def test_manual_scheduler_full():
+    rc = RunConfig.from_dict({
+        "binary": "/x",
+        "scheduler": "manual",
+        "nodes": ["cn1", "cn2", "cn3", "cn4"],
+        "ranks_per_node": 128,
+        "cpus_per_node": 128,
+        "ranks_per_shot": 16,
+    })
+    assert rc.scheduler == "manual"
+    assert rc.nodes == ["cn1", "cn2", "cn3", "cn4"]
+    assert rc.ranks_per_node == 128
+    assert rc.cpus_per_node == 128
+    # manual defaults its launcher to mpirun (typical inside-allocation launch)
+    assert rc.effective_launcher() == "mpirun"
+
+
+def test_nodes_accepts_string():
+    rc = RunConfig.from_dict({
+        "binary": "/x",
+        "scheduler": "manual",
+        "nodes": "cn[1-4]",
+        "ranks_per_node": 4,
+        "cpus_per_node": 4,
+    })
+    # _resolve_nodes is deferred to detect_allocation time; RunConfig just
+    # stores the raw value.
+    assert rc.nodes == "cn[1-4]"
+
+
+def test_nodes_bad_type_rejected():
+    with pytest.raises(ValueError, match="run.nodes"):
+        RunConfig.from_dict({"binary": "/x", "nodes": 42})
+
+
+def test_ranks_per_node_zero_rejected():
+    with pytest.raises(ValueError, match="ranks_per_node"):
+        RunConfig.from_dict({
+            "binary": "/x", "scheduler": "manual",
+            "nodes": ["a"], "ranks_per_node": 0, "cpus_per_node": 4,
+        })
+
+
+def test_cpus_per_node_zero_rejected():
+    with pytest.raises(ValueError, match="cpus_per_node"):
+        RunConfig.from_dict({
+            "binary": "/x", "scheduler": "manual",
+            "nodes": ["a"], "ranks_per_node": 4, "cpus_per_node": 0,
+        })
+
+
+def test_overrides_optional_for_native_schedulers():
+    # PBS / SLURM etc. don't require manual overrides; they default to None
+    rc = RunConfig.from_dict({"binary": "/x", "scheduler": "pbs"})
+    assert rc.nodes is None
+    assert rc.ranks_per_node is None
+    assert rc.cpus_per_node is None

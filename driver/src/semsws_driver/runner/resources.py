@@ -16,7 +16,7 @@ import socket
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def detect_allocation(
     cores_per_node: Optional[int] = None,
     gpus_per_node: Optional[int] = None,
     ranks_per_node: Optional[int] = None,
-    nodes: Optional[list[str]] = None,
+    nodes: Optional[Union[list[str], str]] = None,
 ) -> Allocation:
     """Detect the current allocation, or build a manual one.
 
@@ -87,18 +87,59 @@ def detect_allocation(
     fallbacks when the scheduler env does not expose a value (e.g. PJM
     doesn't publish cores_per_node) and as the only source for the
     "manual" scheduler.
+
+    `nodes` accepts a list[str] or a string. Strings are passed through
+    `_resolve_nodes`, which handles: a path to a nodefile (deduped
+    line-by-line), a SLURM-compressed nodelist (`nid[1-4]`), or a
+    comma-separated list.
     """
+    nodes_list = _resolve_nodes(nodes) if isinstance(nodes, str) else nodes
+
     if force == "manual":
-        return _manual_allocation(nodes, ranks_per_node, cores_per_node, gpus_per_node)
+        return _manual_allocation(nodes_list, ranks_per_node, cores_per_node, gpus_per_node)
     if force == "slurm" or (force is None and "SLURM_JOB_ID" in os.environ):
         return _slurm_allocation(cores_per_node, gpus_per_node)
     if force == "pjm" or (force is None and "PJM_JOBID" in os.environ):
-        return _pjm_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes)
+        return _pjm_allocation(cores_per_node, gpus_per_node, ranks_per_node, nodes_list)
     if force == "pbs" or (force is None and "PBS_JOBID" in os.environ):
         return _pbs_allocation(cores_per_node, gpus_per_node)
     if force == "lsf" or (force is None and "LSB_JOBID" in os.environ):
         return _lsf_allocation(cores_per_node, gpus_per_node)
     return _local_allocation(cores_per_node, gpus_per_node)
+
+
+def _resolve_nodes(value: str) -> list[str]:
+    """Convert a YAML `nodes:` string to a list of hostnames.
+
+    Accepted shapes (checked in this order):
+      * absolute / relative path to a nodefile  → read, dedupe lines
+      * SLURM-compressed form `prefix[1-4,7]`   → expanded
+      * comma-separated list `a,b,c`            → split
+      * single hostname                         → wrapped in list
+
+    Empty strings raise. Environment variables (`$VAR`, `${VAR}`) are
+    expanded before path checking so the caller can pass
+    `${PBS_NODEFILE}` directly.
+    """
+    if not isinstance(value, str):
+        raise TypeError(
+            f"_resolve_nodes expects str, got {type(value).__name__}"
+        )
+    s = value.strip()
+    if not s:
+        raise ValueError("nodes string is empty")
+    expanded = os.path.expandvars(os.path.expanduser(s))
+    p = Path(expanded)
+    if p.is_file():
+        raw = [tok for tok in p.read_text().split() if tok]
+        if not raw:
+            raise ValueError(f"nodefile {p} is empty")
+        return sorted(set(raw))
+    if "[" in s:
+        return _parse_slurm_nodelist(s)
+    if "," in s:
+        return [t.strip() for t in s.split(",") if t.strip()]
+    return [s]
 
 
 # ---- SLURM -----------------------------------------------------------------
@@ -287,6 +328,19 @@ def _pjm_allocation(
 def _pbs_allocation(
     cores_override: Optional[int], gpus_override: Optional[int]
 ) -> Allocation:
+    """Build a PBS Allocation.
+
+    Resolution priority for `ranks_per_node`:
+      1. `PBS_NUM_PPN` env var (canonical, robust)
+      2. Legacy: count occurrences of the first node in `PBS_NODEFILE`.
+         This works when the nodefile has one line per process slot, but
+         is silently wrong on NQSV/PBS-pro setups that emit one line per
+         node. Triggers a DeprecationWarning when used.
+
+    Nodes are always derived by dedupe of `PBS_NODEFILE` line tokens, so
+    the file format (1-line-per-node vs 1-line-per-rank) is invisible to
+    the rest of the pipeline.
+    """
     seen: dict[str, str] = {}
     missing: list[str] = []
 
@@ -300,20 +354,34 @@ def _pbs_allocation(
 
     raw = Path(nodefile_path).read_text().split()
     nodes = sorted(set(raw))
-    ranks_per_node = raw.count(nodes[0]) if nodes else 0
-    if ranks_per_node <= 0:
+    if not nodes:
         raise RuntimeError(f"PBS nodefile {nodefile_path} appears empty")
 
     ppn_raw = os.environ.get("PBS_NUM_PPN")
+    legacy_count = raw.count(nodes[0])
     if ppn_raw:
         seen["PBS_NUM_PPN"] = ppn_raw
-        cpus_per_node = int(ppn_raw)
-    elif cores_override:
-        cpus_per_node = cores_override
-        missing.append("PBS_NUM_PPN")
+        ranks_per_node = int(ppn_raw)
+        cpus_per_node = ranks_per_node
     else:
-        cpus_per_node = os.cpu_count() or 1
+        ranks_per_node = legacy_count
         missing.append("PBS_NUM_PPN")
+        if cores_override:
+            cpus_per_node = cores_override
+        else:
+            cpus_per_node = os.cpu_count() or 1
+        log.warning(
+            "PBS_NUM_PPN not set; inferring ranks_per_node=%d from "
+            "PBS_NODEFILE occurrence count. This will silently misread "
+            "NQSV-style 1-line-per-node nodefiles. Export PBS_NUM_PPN "
+            "or set run.ranks_per_node explicitly. (deprecated)",
+            ranks_per_node,
+        )
+    if ranks_per_node <= 0:
+        raise RuntimeError(
+            "PBS allocation: ranks_per_node is 0; export PBS_NUM_PPN or "
+            "set run.ranks_per_node in the YAML"
+        )
 
     gpus_per_node = gpus_override if gpus_override is not None else _probe_gpus_local()
     if gpus_override is None:
@@ -336,6 +404,14 @@ def _pbs_allocation(
 def _lsf_allocation(
     cores_override: Optional[int], gpus_override: Optional[int]
 ) -> Allocation:
+    """Build an LSF Allocation.
+
+    Resolution priority for `ranks_per_node`:
+      1. `LSB_DJOB_NUMPROC // n_nodes` (canonical, robust)
+      2. Legacy: count first node's occurrences in `LSB_DJOB_HOSTFILE`
+         or `LSB_HOSTS`. Same fragility as PBS — wrong if the hostfile
+         is 1-line-per-node. Triggers a DeprecationWarning when used.
+    """
     seen: dict[str, str] = {}
     missing: list[str] = []
 
@@ -358,15 +434,28 @@ def _lsf_allocation(
         raw = hosts_env.split()
 
     nodes = sorted(set(raw))
-    ranks_per_node = raw.count(nodes[0]) if nodes else 0
+    if not nodes:
+        raise RuntimeError("LSF: empty hostfile/hosts")
+
+    numproc_raw = os.environ.get("LSB_DJOB_NUMPROC", "")
+    if numproc_raw:
+        seen["LSB_DJOB_NUMPROC"] = numproc_raw
+        ranks_per_node = int(numproc_raw) // len(nodes)
+    else:
+        ranks_per_node = raw.count(nodes[0])
+        missing.append("LSB_DJOB_NUMPROC")
+        log.warning(
+            "LSB_DJOB_NUMPROC not set; inferring ranks_per_node=%d from "
+            "hostfile occurrence count. This will silently misread "
+            "1-line-per-node hostfiles. Export LSB_DJOB_NUMPROC or "
+            "set run.ranks_per_node explicitly. (deprecated)",
+            ranks_per_node,
+        )
     if ranks_per_node <= 0:
-        numproc_raw = os.environ.get("LSB_DJOB_NUMPROC", "0")
-        if numproc_raw:
-            seen["LSB_DJOB_NUMPROC"] = numproc_raw
-        ranks_per_node = (int(numproc_raw) // len(nodes)) if nodes else 0
-        missing.append("(derived ranks_per_node from LSB_DJOB_NUMPROC)")
-    if ranks_per_node <= 0:
-        raise RuntimeError("LSF: cannot determine ranks per node")
+        raise RuntimeError(
+            "LSF allocation: ranks_per_node is 0; export LSB_DJOB_NUMPROC "
+            "or set run.ranks_per_node in the YAML"
+        )
 
     cpus_per_node = cores_override if cores_override else (os.cpu_count() or 1)
     if cores_override is None:
