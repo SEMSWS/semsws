@@ -430,8 +430,12 @@ int main(int argc, char* argv[]) {
         } else {
             material = BuildMaterial<3>(config, *pmesh, order);
         }
-        v_min_global = material->GetMinVelocity();
-        v_max_global = material->GetMaxVelocity();
+        real_t v_min_local = material->GetMinVelocity();
+        real_t v_max_local = material->GetMaxVelocity();
+        MPI_Allreduce(&v_min_local, &v_min_global, 1, MFEM_MPI_REAL_T,
+                      MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(&v_max_local, &v_max_global, 1, MFEM_MPI_REAL_T,
+                      MPI_MAX, MPI_COMM_WORLD);
         if (rank == 0) {
             std::cout << "  Type: " << config.GetMaterialType() << "\n";
             std::cout << "  V_min (global): " << v_min_global << "\n";
