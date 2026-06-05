@@ -4,10 +4,12 @@
  */
 
 #include "srcrecv/Source.hpp"
+#include "srcrecv/ObservedResampler.hpp"
 #include <cmath>
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <vector>
 
 namespace SEM {
 
@@ -203,15 +205,29 @@ SourceTimeFunction SourceTimeFunction::FromConfig(
     int nt, real_t dt) {
 
     // Pre-loaded STF samples (HDF5 input bundle) take precedence over
-    // analytic / external-file synthesis. The HDF5 reader enforces
-    // length == n_samples and dtype f64.
+    // analytic / external-file synthesis. The HDF5 reader stores the STF at
+    // the bundle's n_samples; the simulation injects one value per step, so
+    // resample it to nt when the observation sampling differs from the
+    // simulation's. Both grids span the same [t0, tend] (t0 = 0), so the
+    // source spacing follows from equal duration: src_dt = dt * nt / n_src.
     if (!config.stf_samples.empty()) {
-        MFEM_VERIFY(static_cast<int>(config.stf_samples.size()) == nt,
-            "pre-loaded STF: stf_samples length " <<
-            config.stf_samples.size() << " != nt " << nt);
+        const int n_src = static_cast<int>(config.stf_samples.size());
         DenseMatrix dm(nt, 1);
-        for (int i = 0; i < nt; ++i) {
-            dm(i, 0) = config.stf_samples[i];
+        if (n_src == nt) {
+            for (int i = 0; i < nt; ++i) {
+                dm(i, 0) = config.stf_samples[i];
+            }
+        } else {
+            const real_t src_dt = dt * static_cast<real_t>(nt)
+                                / static_cast<real_t>(n_src);
+            std::vector<real_t> dst(static_cast<size_t>(nt));
+            ObservedResampler::Resample(
+                config.stf_samples.data(), n_src, src_dt, /*src_t0=*/real_t{0},
+                dst.data(), nt, dt, /*dst_t0=*/real_t{0},
+                ObservedResampler::Method::Lanczos, /*lanczos_a=*/3);
+            for (int i = 0; i < nt; ++i) {
+                dm(i, 0) = dst[static_cast<size_t>(i)];
+            }
         }
         return SourceTimeFunction(dm, dt);
     }
