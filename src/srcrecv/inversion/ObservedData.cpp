@@ -20,6 +20,7 @@
 #include "srcrecv/ObservedTypes.hpp"
 #include "srcrecv/Receiver.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <vector>
 
@@ -309,11 +310,17 @@ void ObservedData::AlignToSimulation(int sim_nt, real_t sim_dt) {
                     src_w[s] = obs.weight(s, c);
                 }
                 std::vector<real_t> dst_w(sim_nt);
+                // The weight is a non-negative taper/mask, not a band-limited
+                // signal: resample it linearly (no overshoot) and clamp to >=0.
+                // Lanczos here would ring below zero at the window edges and
+                // make the L2 misfit (0.5*w*r^2*dt) negative.
                 ObservedResampler::Resample(src_w.data(), obs.num_samples,
                                             obs.dt, obs.t0,
                                             dst_w.data(), sim_nt, sim_dt, src_t0,
-                                            method, lanczos_a);
-                for (int s = 0; s < sim_nt; ++s) new_w(s, c) = dst_w[s];
+                                            ObservedResampler::Method::Linear,
+                                            lanczos_a);
+                for (int s = 0; s < sim_nt; ++s)
+                    new_w(s, c) = std::max(real_t(0), dst_w[s]);
             } else {
                 for (int s = 0; s < sim_nt; ++s) new_w(s, c) = 1.0;
             }
