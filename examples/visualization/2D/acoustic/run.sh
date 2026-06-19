@@ -17,8 +17,8 @@ rm -rf results
 mpirun -np "${NP}" "${progdir}/semsws" --config config.yaml
 
 echo "=== Matplotlib wavefield figures ==="
-python3 "${plotdir}/plot_wavefield_2d.py" --results-dir ./results \
+python3 "${plotdir}/plot_wavefield_2d.py" --results-dir ./results/vis \
     || echo "  (plot_wavefield_2d failed — need matplotlib + numpy)"
 
 echo "=== GMT wavefield figures (requires GMT 6 CLI) ==="
-bash plot_gmt.sh ./results || echo "  (plot_gmt.sh failed — install GMT 6 to enable)"
+bash plot_gmt.sh ./results/vis || echo "  (plot_gmt.sh failed — install GMT 6 to enable)"

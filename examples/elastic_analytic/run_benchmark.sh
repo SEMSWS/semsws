@@ -2,14 +2,14 @@
 # ============================================================
 # 3D Elastic Analytic Benchmark
 #
-# Validates SEM-Next against the Aki & Richards analytical solution
+# Validates SEMSWS against the Aki & Richards analytical solution
 # for a Mrp double-couple point source in a homogeneous elastic full-space.
 #
 # Usage:
 #   bash run_benchmark.sh [NPROCS]         # default NPROCS=4
 #
 # Prereqs:
-#   - SEM-Next build at ../../build/src/test_forward_simulation
+#   - SEMSWS build at ../../build/src/semsws
 #   - Python (numpy) for generate_analytical.py
 # ============================================================
 
@@ -33,11 +33,11 @@ echo ""
 echo "=== Step 1: Generate analytical references ==="
 python3 generate_analytical.py
 
-# Step 2: Run SEM-Next simulation
+# Step 2: Run SEMSWS simulation
 echo ""
-echo "=== Step 2: Run SEM-Next simulation ==="
+echo "=== Step 2: Run SEMSWS simulation ==="
 rm -rf results
-mpirun -np "${NPROCS}" "${PROGDIR}/test_forward_simulation" --config config.yaml
+mpirun -np "${NPROCS}" "${PROGDIR}/semsws" --config config.yaml
 
 # Step 3: Compare results (inline: normalized L2 error per trace)
 echo ""
@@ -47,7 +47,7 @@ for station in Z1 Z2 Z3 Z4 Z5 Z6; do
     for comp in x y z; do
         COMP_UPPER=$(echo "$comp" | tr 'a-z' 'A-Z')
         ref_file="ref/XX.${station}.FX${COMP_UPPER}.semd"
-        res_file="results/${station}_${comp}_0001.d"
+        res_file="results/${station}_${comp}_0000.d"
         if [ ! -f "$res_file" ]; then
             echo "  MISSING: ${res_file}"
             continue

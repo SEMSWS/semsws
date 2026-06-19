@@ -56,7 +56,7 @@ plot_cross_section() {
         # Check constant field
         local ZMIN=$(gmt grdinfo ${GRD} -Cn -o4)
         local ZMAX=$(gmt grdinfo ${GRD} -Cn -o5)
-        local IS_CONST=$(awk "BEGIN{m=(${ZMAX}+${ZMIN})/2; s=${ZMAX}-${ZMIN}; print (m!=0 && s/m<0.001) ? 1 : 0}")
+        local IS_CONST=$(awk -v zmax="${ZMAX}" -v zmin="${ZMIN}" 'BEGIN{m=(zmax+zmin)/2; s=zmax-zmin; print (m!=0 && s/m<0.001) ? 1 : 0}')
         local ZMEAN=$(awk "BEGIN{printf \"%.6g\", (${ZMAX}+${ZMIN})/2}")
 
         # Extract axis labels from slice name
@@ -66,7 +66,7 @@ plot_cross_section() {
         gmt begin ${FIG} png
             if [ "${IS_WAVEFIELD}" = "1" ] && [ "${IS_CONST}" = "0" ]; then
                 # Wavefield: symmetric colormap
-                local VMAX=$(awk "BEGIN{a=${ZMIN}<0?-${ZMIN}:${ZMIN}; b=${ZMAX}<0?-${ZMAX}:${ZMAX}; print a>b?a:b}")
+                local VMAX=$(awk -v zmax="${ZMAX}" -v zmin="${ZMIN}" 'BEGIN{a=zmin<0?-zmin:zmin; b=zmax<0?-zmax:zmax; print (a>b?a:b)}')
                 gmt makecpt -Cpolar -T-${VMAX}/${VMAX} -Z
                 gmt grdimage ${GRD} -R${region} -JX12c/12c -C
             elif [ "${IS_CONST}" = "1" ]; then
