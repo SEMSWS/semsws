@@ -15,11 +15,6 @@ if(NOT DEFINED CMAKE_INSTALL_RPATH)
     set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 endif()
 
-# Default to Release when the user did not pick a build type explicitly.
-# Without this CMake leaves CMAKE_BUILD_TYPE empty, which means no -O3 and
-# no -g — the resulting binary is several times slower than a real Release
-# build. Multi-config generators (Visual Studio, Xcode) pick the type at
-# build time, so skip the default in that case.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "CMAKE_BUILD_TYPE not set; defaulting to Release.")
     set(CMAKE_BUILD_TYPE Release CACHE STRING
