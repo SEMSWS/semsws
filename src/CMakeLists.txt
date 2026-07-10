@@ -1,37 +1,22 @@
 # Minimum required CMake version
 cmake_minimum_required(VERSION 3.20)
 
-# Set compiler-specific optimization flags. -fopt-info-vec-optimized prints
-# a line for every successful auto-vectorisation, which floods CI and Spack
-# build logs; gate it behind an opt-in toggle.
-option(SEM_VEC_INFO "Enable GCC -fopt-info-vec-optimized output" OFF)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "-O2 -march=native")
-    if(SEM_VEC_INFO)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopt-info-vec-optimized")
-    endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC" OR CMAKE_CXX_COMPILER_ID STREQUAL "PGI")
     set(CMAKE_CXX_FLAGS "-O2 -tp=native")
 else()
     set(CMAKE_CXX_FLAGS "-O2")
 endif()
 
-# Note: OpenMP is intentionally NOT used (conflicts with MFEM's device
-# abstraction and with MPI on multi-GPU nodes).
+
 
 # yaml-cpp for YAML configuration file parsing.
 #
 # yaml-cpp 0.9.0 or newer is required. 0.9.0 ships the `#include <cstdint>`
 # fix (jbeder/yaml-cpp@7b469b4) that older 0.7/0.8 are missing — without
-# that include, manual builds on GCC 15+ fail with `uint16_t was not
-# declared`. The version requirement also doubles as protection against
-# unrelated system installs (e.g. /mnt/c/msys64/mingw64 yaml-cpp on WSL2
-# typically ships 0.6/0.7 and is rejected here by version, so its include
-# tree never enters the SEMSWS compile path).
-#
-# Spack provides yaml-cpp@0.9.0 via the spack-repo/packages/yaml-cpp shadow;
-# manual builds need to install it themselves (`apt`, source build, etc.).
+
 find_package(yaml-cpp 0.9.0 REQUIRED)
 message(STATUS "yaml-cpp via find_package: ${yaml-cpp_DIR}")
 
@@ -89,13 +74,8 @@ find_package(adios2 REQUIRED)
 message(STATUS "ADIOS2: Found (FWI kernel/model I/O via BP5)")
 
 # HDF5 (C API only — no C++ bindings required; keeps dependencies portable
-# across distros where libhdf5-cpp-dev ships separately). Must be the same
-# HDF5 that MFEM was built against; point HDF5_ROOT at that prefix.
 find_package(HDF5 REQUIRED COMPONENTS C)
-# Cray-HDF5 fallback: cray-hdf5's h5cc wrapper relies on CPATH and doesn't
-# emit -I flags, so FindHDF5 can fail to populate HDF5_INCLUDE_DIRS even when
-# the library is found. Recover the include dir by resolving <libdir>/../include
-# from the located libhdf5 (e.g. /opt/cray/pe/hdf5/.../lib → .../include).
+# FOR LUMI
 if(NOT HDF5_INCLUDE_DIRS AND HDF5_C_LIBRARY_hdf5)
     get_filename_component(_sem_hdf5_libdir "${HDF5_C_LIBRARY_hdf5}" DIRECTORY)
     get_filename_component(_sem_hdf5_root  "${_sem_hdf5_libdir}"     DIRECTORY)
@@ -278,60 +258,6 @@ else()
     set(SEM_USE_HIP OFF)
 endif()
 
-# =============================================================================
-# libCEED configuration (optional, for portable GPU/CPU kernels)
-# =============================================================================
-
-option(SEM_USE_LIBCEED "Enable libCEED-based integrators for GPU/CPU portability" OFF)
-
-if(SEM_USE_LIBCEED)
-    # Try to find libCEED
-    find_package(PkgConfig)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(CEED IMPORTED_TARGET ceed)
-    endif()
-
-    # Also try CEED_DIR if specified
-    if(NOT CEED_FOUND AND DEFINED CEED_DIR)
-        find_path(CEED_INCLUDE_DIR ceed/ceed.h
-            HINTS ${CEED_DIR}/include
-            NO_DEFAULT_PATH
-        )
-        find_library(CEED_LIBRARY ceed
-            HINTS ${CEED_DIR}/lib ${CEED_DIR}/lib64
-            NO_DEFAULT_PATH
-        )
-        if(CEED_INCLUDE_DIR AND CEED_LIBRARY)
-            set(CEED_FOUND TRUE)
-            set(CEED_INCLUDE_DIRS ${CEED_INCLUDE_DIR})
-            set(CEED_LIBRARIES ${CEED_LIBRARY})
-            message(STATUS "libCEED found at ${CEED_DIR}")
-        endif()
-    endif()
-
-    if(CEED_FOUND)
-        message(STATUS "")
-        message(STATUS "========================================")
-        message(STATUS "libCEED support: ENABLED")
-        message(STATUS "  -> CeedElasticIntegrator3D available")
-        message(STATUS "  -> GPU/CPU portable kernels enabled")
-        if(CEED_INCLUDE_DIRS)
-            message(STATUS "  -> Include: ${CEED_INCLUDE_DIRS}")
-        endif()
-        if(CEED_LIBRARIES)
-            message(STATUS "  -> Library: ${CEED_LIBRARIES}")
-        endif()
-        message(STATUS "========================================")
-        message(STATUS "")
-    else()
-        message(WARNING "libCEED not found! SEM_USE_LIBCEED will be disabled.")
-        message(WARNING "  To enable, install libCEED and set CEED_DIR or PKG_CONFIG_PATH")
-        set(SEM_USE_LIBCEED OFF)
-    endif()
-else()
-    message(STATUS "libCEED support: DISABLED")
-    message(STATUS "  -> Use -DSEM_USE_LIBCEED=ON and -DCEED_DIR=/path/to/libceed to enable")
-endif()
 
 # =============================================================================
 # Modular SEM Libraries
@@ -366,23 +292,12 @@ set(SEM_INCLUDE_DIRS
 
 # Common link libraries for all libraries.
 # Append CUDA::cudart on CUDA builds so every sem_* target picks up the
-# CUDA runtime that libmfem.a needs (mem_manager.o references
-# cudaStreamSynchronize, cudaMalloc, ...).
+# CUDA runtime 
 set(SEM_LINK_LIBS ${MFEM_LIBRARIES} ${MPI_LIBRARIES})
 if(SEM_USE_CUDA)
     list(APPEND SEM_LINK_LIBS CUDA::cudart)
 endif()
 
-# Static MFEM (libmfem.a) built with MPI leaves METIS_PartGraph* symbols
-# unresolved in mesh.cpp.o; MFEMConfig.cmake does not propagate the METIS
-# link, so consumers must add it themselves. Shared MFEM hides this
-# because libmfem.so encodes libmetis in its DT_NEEDED entries.
-#
-# Not gated on MFEM_USE_METIS — MFEMConfig.cmake does not export that
-# variable (only MFEM_USE_METIS_5, which means "METIS is version 5+",
-# not "METIS is in use"). MFEM_USE_MPI=ON in MFEM's CMake always pulls
-# METIS in, and SEMSWS itself REQUIREs MPI a few lines above, so the
-# unconditional find_library here is correct.
 find_library(SEM_METIS_LIB
     NAMES metis
     HINTS ${MFEM_DIR}/lib
@@ -412,15 +327,7 @@ function(add_sem_library name)
     target_include_directories(${name} PUBLIC ${SEM_INCLUDE_DIRS})
     target_link_libraries(${name} PUBLIC ${SEM_LINK_LIBS} ${ARG_DEPS} ${ARG_EXTRA_LIBS})
     target_compile_features(${name} PUBLIC cxx_std_17)
-    # cxx_std_17 above only propagates to CXX compilation; nvcc still
-    # needs the CUDA-language standard to be pinned explicitly.
-    # Required when MFEM's dfem/ headers pull in CTAD + std::string_view /
-    # std::variant on NVHPC nvc++, which otherwise compiles at C++14.
-    # Use CUDA_STANDARD property rather than `cuda_std_17` compile feature:
-    # CMake's CUDA feature table is empty for several nvcc/Clang-CUDA
-    # versions, and a PUBLIC cuda_std_17 requirement then propagates to
-    # pure-CXX consumers (e.g. test/unit executables) and aborts with
-    # "No known features for CUDA compiler".
+
     if(SEM_USE_CUDA)
         set_target_properties(${name} PROPERTIES
             CUDA_STANDARD 17
