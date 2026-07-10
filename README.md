@@ -19,8 +19,8 @@ on [MFEM](https://mfem.org/).
 
 - **Parallel** MPI domain decomposition for HPC clusters
 - **Portable GPU** support (CUDA / HIP) through MFEM's device layer
-- **Multiple physics**: isotropic acoustic, isotropic elastic,
-  viscoelastic (generalized Maxwell body), and coupled fluid-solid
+- **Multiple physics**: acoustic, elastic,
+  viscoelastic, and coupled fluid-solid
   wave equations in 2D/3D
 
 ---
