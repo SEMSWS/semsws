@@ -165,6 +165,7 @@ struct WaveletConfig {
     real_t delay = 0.0;            ///< Time delay [s]
     std::string external_file;     ///< Path to external STF file
     std::vector<real_t> stf_samples; ///< Pre-loaded samples (type="hdf5"); length == nt
+    real_t stf_dt = 0.0;           ///< Sampling interval [s] of stf_samples (HDF5 bundle dt); 0 = unknown
 };
 
 /// Force source (elastic media)

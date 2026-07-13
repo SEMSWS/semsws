@@ -57,6 +57,7 @@ struct SourceDef {
     real_t delay;                        // Time delay (s)
     std::string external_file;           // Path to external STF file (for wavelet_type="external")
     std::vector<real_t> stf_samples;     // Pre-loaded STF samples (HDF5 bundle); non-empty bypasses analytic synthesis
+    real_t stf_dt = 0.0;                 // Sampling interval [s] of stf_samples (HDF5 bundle dt); 0 = unknown
 
     // Moment tensor components (for moment_tensor type)
     real_t M[6];                         // Mxx, Myy, Mzz, Mxy, Mxz, Myz

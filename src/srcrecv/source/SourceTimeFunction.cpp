@@ -206,20 +206,30 @@ SourceTimeFunction SourceTimeFunction::FromConfig(
 
     // Pre-loaded STF samples (HDF5 input bundle) take precedence over
     // analytic / external-file synthesis. The HDF5 reader stores the STF at
-    // the bundle's n_samples; the simulation injects one value per step, so
-    // resample it to nt when the observation sampling differs from the
-    // simulation's. Both grids span the same [t0, tend] (t0 = 0), so the
-    // source spacing follows from equal duration: src_dt = dt * nt / n_src.
+    // the bundle's own sampling (config.stf_dt); the simulation injects one
+    // value per step, so resample it onto the simulation grid (nt, dt).
+    //
+    // The STF is a physical waveform, so the resample must preserve physical
+    // time: src_dt is the bundle's true dt, NOT a value back-derived from the
+    // sample counts. The old dt*nt/n_src formula silently assumed the bundle
+    // and the simulation span the same duration; when they differ (e.g. a 22 s
+    // observation bundle vs a 17 s simulation) it rescales the time axis and
+    // shifts the whole spectrum (a 3-6 Hz STF emerges near 4-8 Hz). Only fall
+    // back to that formula when stf_dt is unknown (0), for backward compat.
     if (!config.stf_samples.empty()) {
         const int n_src = static_cast<int>(config.stf_samples.size());
+        const real_t src_dt = (config.stf_dt > real_t{0})
+            ? config.stf_dt
+            : dt * static_cast<real_t>(nt) / static_cast<real_t>(n_src);
+        const bool same_grid = (n_src == nt) &&
+            (std::abs(static_cast<double>(src_dt) - static_cast<double>(dt))
+                 <= 1e-12 * static_cast<double>(dt));
         DenseMatrix dm(nt, 1);
-        if (n_src == nt) {
+        if (same_grid) {
             for (int i = 0; i < nt; ++i) {
                 dm(i, 0) = config.stf_samples[i];
             }
         } else {
-            const real_t src_dt = dt * static_cast<real_t>(nt)
-                                / static_cast<real_t>(n_src);
             std::vector<real_t> dst(static_cast<size_t>(nt));
             ObservedResampler::Resample(
                 config.stf_samples.data(), n_src, src_dt, /*src_t0=*/real_t{0},

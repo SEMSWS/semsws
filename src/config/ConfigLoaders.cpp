@@ -87,6 +87,7 @@ SourceConfig::Config2D LoadSourceConfig2D(const YamlConfig& config) {
         wavelet.delay = def.delay;
         wavelet.external_file = def.external_file;
         wavelet.stf_samples = def.stf_samples;
+        wavelet.stf_dt = def.stf_dt;
 
         if (def.type == "force") {
             SourceConfig::ForceSource src;
@@ -129,6 +130,7 @@ SourceConfig::Config3D LoadSourceConfig3D(const YamlConfig& config) {
         wavelet.delay = def.delay;
         wavelet.external_file = def.external_file;
         wavelet.stf_samples = def.stf_samples;
+        wavelet.stf_dt = def.stf_dt;
 
         if (def.type == "force") {
             SourceConfig::ForceSource src;

@@ -2248,6 +2248,7 @@ void YamlConfig::ParseSources() const {
             def.amplitude = real_t{1};
             def.delay = real_t{0};
             def.stf_samples = s.stf;
+            def.stf_dt = cat.dt;  // bundle sampling; resample uses this, not sim-derived
             sources_cache_.push_back(std::move(def));
         }
         sources_parsed_ = true;
