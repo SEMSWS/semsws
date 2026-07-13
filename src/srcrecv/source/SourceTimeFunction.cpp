@@ -224,15 +224,6 @@ SourceTimeFunction SourceTimeFunction::FromConfig(
         const bool same_grid = (n_src == nt) &&
             (std::abs(static_cast<double>(src_dt) - static_cast<double>(dt))
                  <= 1e-12 * static_cast<double>(dt));
-        // Runtime tag so a live run confirms which STF-resample path is active
-        // (i.e. whether the bundle-dt fix is in the running binary).
-        mfem::out << "[STF-preloaded] n_src=" << n_src << " src_dt=" << src_dt
-                  << "s -> nt=" << nt << " dt=" << dt << "s | "
-                  << (config.stf_dt > real_t{0}
-                          ? "bundle stf_dt [resample FIX active]"
-                          : "stf_dt unknown -> duration-derived [fallback]")
-                  << (same_grid ? " | identity-copy" : " | Lanczos-resample")
-                  << std::endl;
         DenseMatrix dm(nt, 1);
         if (same_grid) {
             for (int i = 0; i < nt; ++i) {
