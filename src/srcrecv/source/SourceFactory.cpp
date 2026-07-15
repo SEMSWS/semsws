@@ -215,7 +215,7 @@ std::unique_ptr<PointSourceCollection> PointSourceCollection::FromConfigAcoustic
     const SourceConfig::Config2D& config,
     ParFiniteElementSpace* fes,
     const MaterialField& kappa,
-    int nt, real_t dt, MPI_Comm comm) {
+    int nt, real_t dt, MPI_Comm comm, bool phi_integrate) {
 
     auto collection = std::make_unique<PointSourceCollection>(fes, comm);
 
@@ -243,22 +243,25 @@ std::unique_ptr<PointSourceCollection> PointSourceCollection::FromConfigAcoustic
     // Phase 3: Set STF for local sources only
     int src_idx = 0;
 
-    auto set_stf_if_local = [&](const SourceConfig::WaveletConfig& wavelet) {
+    auto set_stf_if_local = [&](const SourceConfig::WaveletConfig& wavelet,
+                                bool apply_phi) {
         if (collection->GetSource(src_idx)->IsLocal()) {
             SourceTimeFunction stf = SourceTimeFunction::FromConfig(wavelet, nt, dt);
+            if (apply_phi) stf.ApplyPhiIntegration();
             collection->GetSource(src_idx)->SetSTF(std::move(stf));
         }
         src_idx++;
     };
 
+    // phi-integration applies only to the acoustic pressure sources.
     for (const auto& src : config.pressures) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, phi_integrate);
     }
     for (const auto& src : config.forces) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, false);
     }
     for (const auto& src : config.moment_tensors) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, false);
     }
 
     return collection;
@@ -268,7 +271,7 @@ std::unique_ptr<PointSourceCollection> PointSourceCollection::FromConfigAcoustic
     const SourceConfig::Config3D& config,
     ParFiniteElementSpace* fes,
     const MaterialField3D& kappa,
-    int nt, real_t dt, MPI_Comm comm) {
+    int nt, real_t dt, MPI_Comm comm, bool phi_integrate) {
 
     auto collection = std::make_unique<PointSourceCollection>(fes, comm);
 
@@ -297,22 +300,25 @@ std::unique_ptr<PointSourceCollection> PointSourceCollection::FromConfigAcoustic
     // Phase 3: Set STF for local sources only
     int src_idx = 0;
 
-    auto set_stf_if_local = [&](const SourceConfig::WaveletConfig& wavelet) {
+    auto set_stf_if_local = [&](const SourceConfig::WaveletConfig& wavelet,
+                                bool apply_phi) {
         if (collection->GetSource(src_idx)->IsLocal()) {
             SourceTimeFunction stf = SourceTimeFunction::FromConfig(wavelet, nt, dt);
+            if (apply_phi) stf.ApplyPhiIntegration();
             collection->GetSource(src_idx)->SetSTF(std::move(stf));
         }
         src_idx++;
     };
 
+    // phi-integration applies only to the acoustic pressure sources.
     for (const auto& src : config.pressures) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, phi_integrate);
     }
     for (const auto& src : config.forces) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, false);
     }
     for (const auto& src : config.moment_tensors) {
-        set_stf_if_local(src.wavelet);
+        set_stf_if_local(src.wavelet, false);
     }
 
     return collection;

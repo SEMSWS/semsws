@@ -100,6 +100,15 @@ public:
         real_t dt_sim,
         int nt_sim);
 
+    /// Convert a pressure-wavelet STF to the phi-source (acoustic phi-u_s
+    /// formulation, recorded pressure P = -d^2 phi/dt^2). Applies, per
+    /// component, phi = \int\int (-stf) dt dt via cumulative trapezoidal
+    /// integration with a linear detrend after each integration (to suppress
+    /// the ramp a raw double integral of a non-zero-area signal accumulates).
+    /// Only used for acoustic sources in inversion / misfit_only mode; the
+    /// FWI driver no longer pre-integrates the STF.
+    void ApplyPhiIntegration();
+
     /// Get value at time step for all components
     void GetValue(int step, Vector& value) const;
 
@@ -329,17 +338,21 @@ public:
         ParFiniteElementSpace* fes,
         int nt, real_t dt, MPI_Comm comm);
 
+    /// `phi_integrate` (acoustic inversion / misfit_only only): convert each
+    /// pressure source's STF from a pressure wavelet to the phi-source via
+    /// SourceTimeFunction::ApplyPhiIntegration (\int\int (-stf) dt dt). The FWI
+    /// driver supplies a plain pressure wavelet and no longer pre-integrates.
     static std::unique_ptr<PointSourceCollection> FromConfigAcoustic(
         const SourceConfig::Config2D& config,
         ParFiniteElementSpace* fes,
         const MaterialField& kappa,
-        int nt, real_t dt, MPI_Comm comm);
+        int nt, real_t dt, MPI_Comm comm, bool phi_integrate = false);
 
     static std::unique_ptr<PointSourceCollection> FromConfigAcoustic(
         const SourceConfig::Config3D& config,
         ParFiniteElementSpace* fes,
         const MaterialField3D& kappa,
-        int nt, real_t dt, MPI_Comm comm);
+        int nt, real_t dt, MPI_Comm comm, bool phi_integrate = false);
 
     // =========================================================================
     // Source registration (Phase 1: no PointFinder)

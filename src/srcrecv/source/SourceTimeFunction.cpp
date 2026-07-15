@@ -139,6 +139,50 @@ real_t SourceTimeFunction::GetValue(int step, int component) const {
     return stf_(step, component);
 }
 
+namespace {
+// Cumulative trapezoidal integral: out[0]=0, out[k]=out[k-1]+dt/2*(x[k]+x[k-1]).
+void CumTrapz(const std::vector<double>& x, double dt, std::vector<double>& out) {
+    const int n = static_cast<int>(x.size());
+    out.assign(static_cast<size_t>(n), 0.0);
+    for (int i = 1; i < n; ++i) {
+        out[i] = out[i - 1] + 0.5 * dt * (x[i] + x[i - 1]);
+    }
+}
+
+// Remove the least-squares linear trend (fit over sample index).
+void DetrendLinear(std::vector<double>& y) {
+    const int n = static_cast<int>(y.size());
+    if (n < 2) return;
+    double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double xi = static_cast<double>(i);
+        sx += xi; sy += y[i]; sxx += xi * xi; sxy += xi * y[i];
+    }
+    const double denom = static_cast<double>(n) * sxx - sx * sx;
+    if (denom == 0.0) return;
+    const double b = (static_cast<double>(n) * sxy - sx * sy) / denom;
+    const double a = (sy - b * sx) / static_cast<double>(n);
+    for (int i = 0; i < n; ++i) y[i] -= (a + b * static_cast<double>(i));
+}
+}  // namespace
+
+void SourceTimeFunction::ApplyPhiIntegration() {
+    const double dt_d = static_cast<double>(dt_);
+    for (int c = 0; c < ncomp_; ++c) {
+        // Negate the input, then double-integrate: phi = \int\int (-stf) dt dt.
+        std::vector<double> x(static_cast<size_t>(nt_));
+        for (int t = 0; t < nt_; ++t) {
+            x[static_cast<size_t>(t)] = -static_cast<double>(stf_(t, c));
+        }
+        std::vector<double> i1, i2;
+        CumTrapz(x, dt_d, i1);  DetrendLinear(i1);
+        CumTrapz(i1, dt_d, i2); DetrendLinear(i2);
+        for (int t = 0; t < nt_; ++t) {
+            stf_(t, c) = static_cast<real_t>(i2[static_cast<size_t>(t)]);
+        }
+    }
+}
+
 SourceTimeFunction SourceTimeFunction::FromExternalFile(
     const std::string& filepath,
     real_t dt_sim,

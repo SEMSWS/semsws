@@ -374,16 +374,27 @@ SimulationFacade<Dim>::SetupSourcesFromConfig() {
         // Acoustic sources
         // Note: For viscoacoustic, material_.Kappa() is already corrected to unrelaxed
         // value in SetupMaterialFromConfig() via ApplyAttenuationCorrection()
+        //
+        // phi-u_s formulation (recorded pressure P = -d^2 phi/dt^2): in inversion
+        // and misfit_only the STF comes from the FWI driver as a plain pressure
+        // wavelet, so convert it to the phi-source here (\int\int (-stf) dt dt).
+        // The driver no longer pre-integrates. Pure forward runs inject the STF
+        // as given.
+        const std::string sim_mode = config_->GetSimulationMode();
+        const bool phi_integrate =
+            (sim_mode == "inversion" || sim_mode == "misfit_only");
         if constexpr (dim == 2) {
             const auto& acoustic_mat = static_cast<const AcousticMaterialBase2D&>(*material_);
             SourceConfig::Config2D src_config = LoadSourceConfig2D(*config_);
             sources_ = PointSourceCollection::FromConfigAcoustic(
-                src_config, &components_.FES(), acoustic_mat.Kappa(), nt, dt, comm_);
+                src_config, &components_.FES(), acoustic_mat.Kappa(), nt, dt, comm_,
+                phi_integrate);
         } else {
             const auto& acoustic_mat = static_cast<const AcousticMaterialBase3D&>(*material_);
             SourceConfig::Config3D src_config = LoadSourceConfig3D(*config_);
             sources_ = PointSourceCollection::FromConfigAcoustic(
-                src_config, &components_.FES(), acoustic_mat.Kappa(), nt, dt, comm_);
+                src_config, &components_.FES(), acoustic_mat.Kappa(), nt, dt, comm_,
+                phi_integrate);
         }
     }
 
